@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>通用房间 - 龙虾游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .lobby-code { font-size: 1.6rem; letter-spacing: .2em; text-align: center; margin: 10px 0; color: #ffd93d; }
+    .player-list { margin: 14px 0; }
+    .player-list li { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .game-select { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #fff; font-size: 1rem; margin-bottom: 12px; }
+    .game-select option { background: #1a1a2e; color: #fff; }
+    .lobby-actions { display: flex; gap: 10px; margin-top: 16px; }
+    .lobby-actions .btn { flex: 1; }
+    .host-badge { font-size: 0.75rem; background: #6bcb77; color: #0f0c29; padding: 2px 6px; border-radius: 6px; margin-left: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <a href="/" class="back-link">← 返回首页</a>
+      <h1>🎮 通用房间</h1>
+      <p>创建或加入房间，等人齐后由房主选择游戏</p>
+      <div style="margin-top:10px;">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </header>
+
+    <div id="setup" class="card">
+      <div class="form-group">
+        <label>你的昵称</label>
+        <input type="text" id="player-name" placeholder="Player" maxlength="12" value="Player">
+      </div>
+      <div class="form-group" id="join-code-group">
+        <label>房间号</label>
+        <input type="text" id="room-id" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;">
+      </div>
+      <div class="lobby-actions">
+        <button class="btn btn-primary" id="create-btn">创建房间</button>
+        <button class="btn btn-secondary" id="join-btn">加入房间</button>
+      </div>
+      <div id="error-msg" class="status-bar hidden" style="background:rgba(255,77,77,.15);color:#ff6b6b;margin-top:12px;"></div>
+    </div>
+
+    <div id="lobby" class="card hidden">
+      <div class="lobby-code" id="room-display">-</div>
+      <div class="room-info-bar" style="justify-content:center;margin-bottom:12px;">
+        <button class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:.8rem;" id="copy-btn" onclick="copyLink()">📋 复制链接</button>
+      </div>
+      <h3>玩家</h3>
+      <ul class="player-list" id="player-list"></ul>
+      <div id="host-controls" class="hidden">
+        <label for="game-select" style="display:block;margin-bottom:6px;color:#aaa;">选择游戏</label>
+        <select id="game-select" class="game-select">
+          <option value="">-- 请选择 --</option>
+          <option value="gomoku">五子棋</option>
+          <option value="pong">乒乓对决</option>
+          <option value="tictactoe">井字棋</option>
+          <option value="connect4">四子连珠</option>
+          <option value="rps">剪刀石头布</option>
+          <option value="memory">记忆翻牌</option>
+          <option value="dots">点格棋</option>
+          <option value="snake">贪吃蛇对战</option>
+          <option value="racing">极速狂飙</option>
+          <option value="draw2guess">你画我猜</option>
+          <option value="drawguess">AI 画图猜词</option>
+        </select>
+        <button class="btn btn-primary" id="start-game-btn" style="width:100%;">开始游戏</button>
+      </div>
+      <div id="guest-wait" class="hidden" style="text-align:center;color:#aaa;margin-top:12px;">等待房主选择游戏…</div>
+      <div class="lobby-actions">
+        <button class="btn btn-danger" id="leave-btn" style="width:100%;">离开房间</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/auth.js"></script>
+  <script src="/sounds.js"></script>
+  <script>
+    const socket = io();
+    const CLIENT_ID = localStorage.getItem('gameBoxClientId') || ('c' + Math.random().toString(36).substring(2, 10));
+    localStorage.setItem('gameBoxClientId', CLIENT_ID);
+    const $ = id => document.getElementById(id);
+    let roomId = null;
+    let mySymbol = null;
+
+    function enableAudioOnInteraction() {
+      Sounds.enable();
+      window.removeEventListener('click', enableAudioOnInteraction);
+      window.removeEventListener('touchstart', enableAudioOnInteraction);
+    }
+    window.addEventListener('click', enableAudioOnInteraction);
+    window.addEventListener('touchstart', enableAudioOnInteraction);
+
+    function getName() { return $('player-name').value.trim() || Auth.name() || 'Player'; }
+    function showError(msg) { $('error-msg').textContent = msg; $('error-msg').classList.remove('hidden'); setTimeout(() => $('error-msg').classList.add('hidden'), 3000); }
+
+    function enterLobby(data) {
+      roomId = data.roomId || data.you?.roomId || $('room-id').value.trim().toUpperCase();
+      mySymbol = data.you ? data.you.symbol : 1;
+      $('setup').classList.add('hidden');
+      $('lobby').classList.remove('hidden');
+      $('room-display').textContent = roomId;
+      renderPlayers(data.players || []);
+      const isHost = data.you ? data.you.isHost : true;
+      $('host-controls').classList.toggle('hidden', !isHost);
+      $('guest-wait').classList.toggle('hidden', isHost);
+    }
+
+    function renderPlayers(players) {
+      $('player-list').innerHTML = players.map(p => `<li>${escapeHtml(p.name)}${p.isHost ? '<span class="host-badge">房主</span>' : ''}</li>`).join('');
+    }
+    function escapeHtml(t) { return t.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    $('create-btn').addEventListener('click', () => {
+      socket.emit('createUniversalRoom', { playerName: getName(), clientId: CLIENT_ID, isPublic: true });
+    });
+    $('join-btn').addEventListener('click', () => {
+      const id = $('room-id').value.trim().toUpperCase();
+      if (!/^\d{6}$/.test(id)) return showError('请输入 6 位数字房间号');
+      socket.emit('joinRoom', { roomId: id, playerName: getName(), clientId: CLIENT_ID });
+    });
+    $('start-game-btn').addEventListener('click', () => {
+      const gameType = $('game-select').value;
+      if (!gameType) return showError('请先选择游戏');
+      socket.emit('lobby:chooseGame', { gameType });
+    });
+    $('leave-btn').addEventListener('click', () => { socket.emit('leaveRoom'); location.href = '/'; });
+    $('room-id').addEventListener('keydown', e => { if (e.key === 'Enter') $('join-btn').click(); });
+
+    socket.on('roomCreated', enterLobby);
+    socket.on('joinedRoom', enterLobby);
+    socket.on('error', ({ message }) => showError(message));
+    socket.on('lobby:state', data => {
+      if (data.players) renderPlayers(data.players);
+    });
+    socket.on('lobby:gameChosen', ({ roomId: id, gameType }) => {
+      window.location.href = `/games/${gameType}.html?room=${encodeURIComponent(id)}`;
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      $('player-name').value = Auth.name() || 'Player';
+      const params = new URLSearchParams(location.search);
+      const code = params.get('room');
+      if (code) {
+        $('room-id').value = code;
+        $('join-code-group').classList.add('hidden');
+        $('create-btn').classList.add('hidden');
+        $('join-btn').textContent = '进入房间';
+        if (/^\d{6}$/.test(code)) socket.emit('joinRoom', { roomId: code.toUpperCase(), playerName: getName(), clientId: CLIENT_ID });
+      }
+    });
+
+    function copyLink() {
+      if (!roomId) return;
+      const url = `${location.origin}/games/lobby.html?room=${roomId}`;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = $('copy-btn'); const old = btn.textContent; btn.textContent = '✅ 已复制';
+        setTimeout(() => btn.textContent = old, 1500);
+      });
+    }
+  </script>
+</body>
+</html>

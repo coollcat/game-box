@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>21点 - 沫芒游境</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .bj-table {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .bj-section {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .bj-section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #ffd93d;
+    }
+
+    .bj-section-title .total {
+      font-size: 0.95rem;
+      color: #fff;
+      background: rgba(255,255,255,0.1);
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    .bj-cards {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      min-height: 92px;
+      align-items: center;
+    }
+
+    .playing-card {
+      width: 58px;
+      height: 82px;
+      background: #fff;
+      border-radius: 8px;
+      color: #222;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      flex-shrink: 0;
+      position: relative;
+      user-select: none;
+      font-size: 1.1rem;
+    }
+
+    .playing-card.red { color: #d32f2f; }
+
+    .playing-card.hidden {
+      background: linear-gradient(135deg, #b71c1c, #5c0000);
+      color: transparent;
+    }
+
+    .playing-card.hidden::after {
+      content: '?';
+      position: absolute;
+      color: rgba(255,255,255,0.35);
+      font-size: 1.6rem;
+      font-weight: 800;
+    }
+
+    .playing-card .suit {
+      font-size: 1.4rem;
+      line-height: 1;
+    }
+
+    .playing-card .rank {
+      line-height: 1;
+    }
+
+    .bj-player-area {
+      transition: box-shadow 0.2s, background 0.2s;
+    }
+
+    .bj-player-area.active {
+      background: rgba(107,203,119,0.12);
+      border-color: rgba(107,203,119,0.35);
+      box-shadow: 0 0 0 1px rgba(107,203,119,0.2);
+    }
+
+    .bj-result-badge {
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+    }
+
+    .bj-result-badge.win { background: rgba(107,203,119,0.25); color: #6bcb77; }
+    .bj-result-badge.lose { background: rgba(255,107,107,0.25); color: #ff6b6b; }
+    .bj-result-badge.push { background: rgba(255,217,61,0.2); color: #ffd93d; }
+    .bj-result-badge.bust { background: rgba(255,107,107,0.25); color: #ff6b6b; }
+    .bj-result-badge.blackjack { background: linear-gradient(135deg, rgba(255,217,61,0.25), rgba(255,159,67,0.25)); color: #ffd93d; }
+
+    .bj-controls {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 560px;
+      margin-top: 6px;
+    }
+
+    .bj-controls .btn {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    .bj-message {
+      min-height: 28px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #ffd93d;
+      margin-top: 4px;
+    }
+
+    .bj-dealer-total {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .privacy-hint {
+      font-size: 0.78rem;
+      color: #aaa;
+      margin-top: 6px;
+    }
+
+    @media (max-width: 380px) {
+      .playing-card { width: 50px; height: 72px; font-size: 1rem; }
+      .playing-card .suit { font-size: 1.2rem; }
+      .bj-section { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>🃏 21点</h1>
+      <div class="settings-row">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </div>
+
+    <div id="lobby" class="screen active">
+      <div class="card">
+        <div class="form-group">
+          <label>你的名字</label>
+          <input type="text" id="player-name" placeholder="Player" maxlength="16">
+        </div>
+        <div class="mode-list">
+          <button class="btn btn-primary" onclick="startMode('ai')">🤖 人机对战</button>
+          <button class="btn btn-secondary" onclick="startMode('local')">👥 本地双人</button>
+          <button class="btn btn-warning" onclick="startMode('online')">🌐 在线对战</button>
+        </div>
+      </div>
+
+      <div id="online-panel" class="card" style="margin-top:14px;">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="sound-toggle" title="公开房间会显示在首页房间列表，私有房间只能通过房间号加入"><input type="checkbox" id="room-public-check" checked> 公开房间（可被搜索）</label>
+          <div id="room-privacy-hint" class="privacy-hint"></div>
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">➕ 创建房间</button>
+        <button class="btn btn-secondary" onclick="showJoin()">🔗 加入房间</button>
+        <button class="btn btn-warning" onclick="quickMatch()">⚡ 快速匹配</button>
+        <div id="join-form" class="hidden" style="margin-top:12px;">
+          <div class="form-group">
+            <label>房间号</label>
+            <input type="text" id="room-id" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;">
+          </div>
+          <button class="btn btn-primary" onclick="joinRoom()">进入房间</button>
+        </div>
+        <div id="error-msg" class="status-bar hidden" style="background:rgba(255,77,77,.15);color:#ff6b6b;"></div>
+      </div>
+    </div>
+
+    <div id="game" class="screen">
+      <div class="status-bar">
+        <div class="room-info-bar">
+          <span>房间:</span>
+          <span id="room-display" class="room-id">-</span>
+          <button class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:.8rem;" id="copy-btn" onclick="copyLink()">📋 复制</button>
+        </div>
+        <div class="player-badges">
+          <span id="badge-p1" class="badge">🧑 <b id="name-p1">-</b></span>
+          <span id="badge-p2" class="badge">🧑 <b id="name-p2">-</b></span>
+        </div>
+        <div id="turn-text">准备开始</div>
+      </div>
+
+      <div class="bj-table">
+        <div class="bj-section">
+          <div class="bj-section-title">
+            <span>🎩 庄家</span>
+            <span id="dealer-total" class="total">-</span>
+          </div>
+          <div id="dealer-cards" class="bj-cards"></div>
+        </div>
+
+        <div id="p1-area" class="bj-section bj-player-area">
+          <div class="bj-section-title">
+            <span id="p1-title">玩家 1</span>
+            <span id="p1-total" class="total">-</span>
+          </div>
+          <div id="p1-cards" class="bj-cards"></div>
+          <div id="p1-result" class="bj-message"></div>
+        </div>
+
+        <div id="p2-area" class="bj-section bj-player-area">
+          <div class="bj-section-title">
+            <span id="p2-title">玩家 2</span>
+            <span id="p2-total" class="total">-</span>
+          </div>
+          <div id="p2-cards" class="bj-cards"></div>
+          <div id="p2-result" class="bj-message"></div>
+        </div>
+      </div>
+
+      <div class="bj-controls">
+        <button id="btn-hit" class="btn btn-primary" onclick="doHit()">🎯 要牌</button>
+        <button id="btn-stand" class="btn btn-secondary" onclick="doStand()">✋ 停牌</button>
+      </div>
+
+      <div class="bj-controls" style="margin-top:10px;">
+        <button class="btn btn-warning" onclick="resetGame()">🔄 重新开始</button>
+        <button class="btn btn-danger" onclick="leaveGame()">🚪 离开</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">-</h2>
+      <p id="end-summary" style="color:#aaa;margin-bottom:18px;font-size:.9rem;">-</p>
+      <button class="btn btn-primary" onclick="rematchGame()">再来一局</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/sounds.js"></script>
+  <script src="/auth.js"></script>
+  <script>
+    const socket = io();
+    const CLIENT_ID = localStorage.getItem('gameBoxClientId') || ('c' + Math.random().toString(36).substring(2, 10));
+    localStorage.setItem('gameBoxClientId', CLIENT_ID);
+    let mode = null;
+    let roomId = null;
+    let mySymbol = 1;
+    let players = [];
+    let roomState = {};
+    let aiTimer = null;
+
+    const $ = id => document.getElementById(id);
+    const SUITS = ['♠','♥','♦','♣'];
+    const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+    const RESULT_TEXT = { win: '胜利', lose: '失败', push: '平局', bust: '爆牌', blackjack: '黑杰克' };
+
+    function play(s) { if (Sounds && Sounds.sfxEnabled() && Sounds[s]) Sounds[s](); }
+    function enableSound() { if (Sounds) Sounds.enable(); }
+
+    function showScreen(el) {
+      $('lobby').classList.remove('active');
+      $('game').classList.remove('active');
+      el.classList.add('active');
+    }
+    function getName() { return $('player-name').value.trim() || 'Player'; }
+
+    function showError(msg) {
+      const el = $('error-msg');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    function startMode(m) {
+      mode = m; enableSound();
+      if (m === 'online') { $('online-panel').classList.remove('hidden'); return; }
+      $('online-panel').classList.add('hidden');
+      $('join-form').classList.add('hidden');
+      resetLocal();
+      $('room-display').textContent = m === 'ai' ? '人机' : '本地';
+      $('copy-btn').classList.add('hidden');
+      showScreen($('game'));
+      render();
+      if (mode === 'ai' && roomState.currentPlayer === 2) scheduleAi();
+    }
+
+    function showJoin() { $('join-form').classList.toggle('hidden'); }
+    function createRoom() {
+      socket.emit('createRoom', { gameType: 'blackjack', playerName: getName(), clientId: CLIENT_ID, isPublic: $('room-public-check').checked });
+    }
+    function quickMatch() {
+      socket.emit('quickMatch:join', { gameType: 'blackjack', playerName: getName(), clientId: CLIENT_ID });
+    }
+    function joinRoom() {
+      const id = $('room-id').value.trim().toUpperCase();
+      if (!id) return showError('请输入房间号');
+      socket.emit('joinRoom', { roomId: id, playerName: getName(), clientId: CLIENT_ID });
+    }
+
+    socket.on('roomCreated', (data) => {
+      const { roomId: id, player, players: ps } = data;
+      const privacyHint = $('room-privacy-hint');
+      if (privacyHint) privacyHint.textContent = (data.isPublic !== false) ? '本房间为公开房间，会显示在房间列表' : '本房间为私有房间，仅可通过房间号加入';
+      roomId = id; mySymbol = (player && player.symbol) || 1; mode = 'online'; players = ps || [{ name: player.name, symbol: player.symbol, isHost: true }];
+      enterOnline();
+      applyState(data.state || {});
+    });
+    socket.on('joinedRoom', (data) => {
+      const { roomId: id, state, you, players: ps } = data;
+      const privacyHint = $('room-privacy-hint');
+      if (privacyHint) privacyHint.textContent = (data.isPublic !== false) ? '本房间为公开房间，会显示在房间列表' : '本房间为私有房间，仅可通过房间号加入';
+      roomId = id; mySymbol = (you && you.symbol) || 1; mode = 'online'; players = ps || [];
+      enterOnline();
+      applyState(state || {});
+    });
+    socket.on('joinedAsSpectator', ({ roomId: id, state, players: ps }) => {
+      roomId = id; mySymbol = null; mode = 'online'; players = ps || [];
+      enterOnline(); applyState(state || {});
+    });
+    socket.on('reconnected', ({ roomId: id, state, player, players: ps }) => {
+      roomId = id; mySymbol = (player && player.symbol) || 1; mode = 'online'; players = ps || [];
+      enterOnline(); applyState(state || {});
+    });
+    socket.on('quickMatch:found', ({ roomId: id, you, players: ps }) => {
+      roomId = id; mySymbol = (you && you.symbol) || 1; mode = 'online'; players = ps || [];
+      enterOnline(); resetLocalOnline(); showError('⚡ 匹配成功！');
+    });
+    socket.on('quickMatch:waiting', () => { showError('⏳ 正在匹配对手...'); });
+    socket.on('game:state', ({ state, players: ps, rematchVotes }) => {
+      if (ps) players = ps;
+      applyState(state || {});
+      if (rematchVotes && mode === 'online' && mySymbol !== null) {
+        const opp = mySymbol === 1 ? 2 : 1;
+        if (rematchVotes[mySymbol] && rematchVotes[opp]) {
+          $('turn-text').textContent = '双方已准备，即将重新开始...';
+        } else if (rematchVotes[mySymbol]) {
+          $('turn-text').textContent = '你已准备再来一局，等待对手...';
+        }
+      }
+    });
+    socket.on('error', ({ message }) => showError(message));
+    socket.on('connect', () => { if (roomId) socket.emit('reconnect', { clientId: CLIENT_ID }); });
+    socket.on('reconnect:failed', () => { roomId = null; });
+
+    function enterOnline() {
+      $('online-panel').classList.add('hidden');
+      $('join-form').classList.add('hidden');
+      $('copy-btn').classList.remove('hidden');
+      $('room-display').textContent = roomId;
+      showScreen($('game'));
+    }
+
+    function resetLocalOnline() {
+      roomState = initialState();
+      render();
+    }
+
+    // ---------- Game logic ----------
+    function initialState() {
+      return { status: mode === 'online' ? 'waiting' : 'playing', deck: [], dealerHand: [], playerHands: { 1: [], 2: [] }, currentPlayer: 1, firstPlayer: 1, gameOver: false, winner: null, results: { 1: null, 2: null }, message: '', dealerHidden: true };
+    }
+
+    function createDeck() {
+      const deck = [];
+      for (const s of SUITS) for (const r of RANKS) deck.push({ suit: s, rank: r, value: r === 'A' ? 11 : ['J','Q','K'].includes(r) ? 10 : parseInt(r, 10) });
+      shuffle(deck);
+      return deck;
+    }
+
+    function shuffle(deck) {
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+    }
+
+    function handValue(hand) {
+      let total = 0, aces = 0;
+      for (const c of hand) {
+        if (c.hidden) continue;
+        total += c.value || 0;
+        if (c.rank === 'A') aces++;
+      }
+      while (total > 21 && aces > 0) { total -= 10; aces--; }
+      return total;
+    }
+
+    function resetLocal() {
+      if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+      const nextFirst = roomState.firstPlayer === 1 ? 2 : 1;
+      roomState = initialState();
+      roomState.firstPlayer = nextFirst;
+      roomState.currentPlayer = nextFirst;
+      startRound();
+      render();
+      if (mode === 'ai' && roomState.currentPlayer === 2) scheduleAi();
+    }
+
+    function startRound() {
+      const deck = createDeck();
+      roomState.deck = deck;
+      roomState.dealerHand = [deck.pop(), deck.pop()];
+      roomState.playerHands = { 1: [deck.pop(), deck.pop()], 2: [deck.pop(), deck.pop()] };
+      roomState.currentPlayer = roomState.firstPlayer;
+      roomState.gameOver = false;
+      roomState.winner = null;
+      roomState.results = { 1: null, 2: null };
+      roomState.message = '';
+      roomState.dealerHidden = true;
+      roomState.status = 'playing';
+      if (handValue(roomState.playerHands[1]) === 21) roomState.results[1] = 'blackjack';
+      if (handValue(roomState.playerHands[2]) === 21) roomState.results[2] = 'blackjack';
+    }
+
+    function doHit() {
+      if (mode === 'online') {
+        if (!canInteract()) return;
+        socket.emit('game:move', { action: 'hit' });
+        return;
+      }
+      if (!canInteract()) return;
+      const p = roomState.currentPlayer;
+      hit(p);
+    }
+
+    function doStand() {
+      if (mode === 'online') {
+        if (!canInteract()) return;
+        socket.emit('game:move', { action: 'stand' });
+        return;
+      }
+      if (!canInteract()) return;
+      stand(roomState.currentPlayer);
+    }
+
+    function hit(p) {
+      if (roomState.status !== 'playing' || roomState.gameOver || roomState.currentPlayer !== p) return;
+      roomState.playerHands[p].push(roomState.deck.pop());
+      play('hit');
+      const val = handValue(roomState.playerHands[p]);
+      if (val > 21) {
+        roomState.results[p] = 'bust';
+        advanceTurn();
+      }
+      render();
+      if (mode === 'ai' && roomState.currentPlayer === 2 && !roomState.gameOver) scheduleAi();
+    }
+
+    function stand(p) {
+      if (roomState.status !== 'playing' || roomState.gameOver || roomState.currentPlayer !== p) return;
+      advanceTurn();
+      render();
+      if (mode === 'ai' && roomState.currentPlayer === 2 && !roomState.gameOver) scheduleAi();
+    }
+
+    function advanceTurn() {
+      if (roomState.currentPlayer === 1) roomState.currentPlayer = 2;
+      else finishGame();
+    }
+
+    function finishGame() {
+      roomState.dealerHidden = false;
+      let dealer = handValue(roomState.dealerHand);
+      while (dealer < 17 && roomState.deck.length > 0) {
+        roomState.dealerHand.push(roomState.deck.pop());
+        dealer = handValue(roomState.dealerHand);
+      }
+      for (const sym of [1, 2]) {
+        const pval = handValue(roomState.playerHands[sym]);
+        if (roomState.results[sym] === 'bust') roomState.results[sym] = 'lose';
+        else if (roomState.results[sym] === 'blackjack') roomState.results[sym] = 'win';
+        else if (dealer > 21) roomState.results[sym] = 'win';
+        else if (pval > dealer) roomState.results[sym] = 'win';
+        else if (pval < dealer) roomState.results[sym] = 'lose';
+        else roomState.results[sym] = 'push';
+      }
+      const wins = [1, 2].filter(s => roomState.results[s] === 'win');
+      roomState.winner = wins.length === 1 ? wins[0] : null;
+      roomState.gameOver = true;
+      roomState.status = 'ended';
+      render();
+      showEndModal();
+    }
+
+    function scheduleAi() {
+      if (aiTimer) clearTimeout(aiTimer);
+      aiTimer = setTimeout(aiMove, 700);
+    }
+
+    function aiMove() {
+      if (mode !== 'ai' || roomState.gameOver || roomState.currentPlayer !== 2) return;
+      const val = handValue(roomState.playerHands[2]);
+      if (val < 17) doHit();
+      else doStand();
+    }
+
+    function canInteract() {
+      if (mode === 'online') {
+        if (roomState.status !== 'playing' || roomState.gameOver) return false;
+        if (mySymbol === null) return false;
+        if (mySymbol !== roomState.currentPlayer) return false;
+        return true;
+      }
+      if (roomState.status !== 'playing' || roomState.gameOver) return false;
+      if (mode === 'ai' && roomState.currentPlayer !== 1) return false;
+      return true;
+    }
+
+    function applyState(state) {
+      roomState = { ...initialState(), ...state };
+      render();
+      if (roomState.gameOver) showEndModal();
+      else closeModal();
+    }
+
+    // ---------- Rendering ----------
+    function render() {
+      renderDealer();
+      renderPlayer(1);
+      renderPlayer(2);
+      updateBadges();
+      updateTurn();
+      updateControls();
+    }
+
+    function renderDealer() {
+      const el = $('dealer-cards');
+      el.innerHTML = '';
+      const hand = roomState.dealerHand || [];
+      for (const c of hand) {
+        el.appendChild(makeCard(c));
+      }
+      const total = roomState.dealerHidden ? handValue([hand[0]]) : handValue(hand);
+      $('dealer-total').textContent = hand.length ? (roomState.dealerHidden ? total + ' +' : total) : '-';
+    }
+
+    function renderPlayer(p) {
+      const el = $(`p${p}-cards`);
+      el.innerHTML = '';
+      const hand = (roomState.playerHands && roomState.playerHands[p]) || [];
+      for (const c of hand) el.appendChild(makeCard(c));
+      const total = handValue(hand);
+      $(`p${p}-total`).textContent = hand.length ? total : '-';
+      $(`p${p}-area`).classList.toggle('active', roomState.currentPlayer === p && roomState.status === 'playing' && !roomState.gameOver);
+      const result = roomState.results && roomState.results[p];
+      const resEl = $(`p${p}-result`);
+      if (result) {
+        resEl.textContent = RESULT_TEXT[result] || result;
+        resEl.className = 'bj-message';
+        const badge = document.createElement('span');
+        badge.className = 'bj-result-badge ' + result;
+        badge.textContent = RESULT_TEXT[result] || result;
+        resEl.innerHTML = '';
+        resEl.appendChild(badge);
+      } else {
+        resEl.textContent = '';
+        resEl.className = 'bj-message';
+      }
+    }
+
+    function makeCard(c) {
+      const div = document.createElement('div');
+      div.className = 'playing-card';
+      if (c && c.hidden) {
+        div.classList.add('hidden');
+        return div;
+      }
+      if (c && (c.suit === '♥' || c.suit === '♦')) div.classList.add('red');
+      const rank = document.createElement('div');
+      rank.className = 'rank';
+      rank.textContent = c.rank || '';
+      const suit = document.createElement('div');
+      suit.className = 'suit';
+      suit.textContent = c.suit || '';
+      div.appendChild(rank);
+      div.appendChild(suit);
+      return div;
+    }
+
+    function updateBadges() {
+      const p1 = players.find(p => p.symbol === 1), p2 = players.find(p => p.symbol === 2);
+      $('name-p1').textContent = mode === 'ai' ? '你' : (mode === 'local' ? '玩家 1' : (p1 ? p1.name : '等待...'));
+      $('name-p2').textContent = mode === 'ai' ? 'AI' : (mode === 'local' ? '玩家 2' : (p2 ? p2.name : '等待...'));
+      if (mode === 'online' && mySymbol !== null) {
+        $('name-p1').textContent += mySymbol === 1 ? ' (你)' : '';
+        $('name-p2').textContent += mySymbol === 2 ? ' (你)' : '';
+      }
+      $('p1-title').textContent = $('name-p1').textContent;
+      $('p2-title').textContent = $('name-p2').textContent;
+    }
+
+    function updateTurn() {
+      if (mode === 'online') {
+        if (roomState.status === 'waiting') { $('turn-text').textContent = '等待对手加入...'; return; }
+        if (mySymbol === null) { $('turn-text').textContent = '👁️ 观战'; return; }
+        if (roomState.gameOver) { $('turn-text').textContent = roomState.message || '游戏结束'; return; }
+        $('turn-text').textContent = mySymbol === roomState.currentPlayer ? '你的回合：要牌或停牌' : '等待对手...';
+        return;
+      }
+      if (roomState.gameOver) { $('turn-text').textContent = roomState.message || '游戏结束'; return; }
+      if (mode === 'ai') {
+        $('turn-text').textContent = roomState.currentPlayer === 1 ? '你的回合' : 'AI 思考中...';
+      } else {
+        $('turn-text').textContent = `玩家 ${roomState.currentPlayer} 的回合`;
+      }
+    }
+
+    function updateControls() {
+      const enabled = canInteract();
+      $('btn-hit').disabled = !enabled;
+      $('btn-stand').disabled = !enabled;
+    }
+
+    // ---------- End / modal ----------
+    function showEndModal() {
+      let title = '游戏结束';
+      let summary = '';
+      if (mode === 'online' && mySymbol !== null) {
+        const myRes = roomState.results[mySymbol];
+        title = myRes === 'win' || myRes === 'blackjack' ? '你赢了！' : (myRes === 'push' ? '平局' : '你输了...');
+        summary = `玩家1：${RESULT_TEXT[roomState.results[1]]} · 玩家2：${RESULT_TEXT[roomState.results[2]]}`;
+      } else if (mode === 'ai') {
+        const myRes = roomState.results[1];
+        title = myRes === 'win' || myRes === 'blackjack' ? '你赢了！' : (myRes === 'push' ? '平局' : '你输了...');
+        summary = `你：${RESULT_TEXT[roomState.results[1]]} · AI：${RESULT_TEXT[roomState.results[2]]}`;
+      } else {
+        summary = `玩家1：${RESULT_TEXT[roomState.results[1]]} · 玩家2：${RESULT_TEXT[roomState.results[2]]}`;
+      }
+      $('end-title').textContent = title;
+      $('end-summary').textContent = summary;
+      $('end-modal').classList.remove('hidden');
+      const anyWin = Object.values(roomState.results || {}).some(r => r === 'win' || r === 'blackjack');
+      play(anyWin ? 'win' : 'lose');
+    }
+
+    function closeModal() { $('end-modal').classList.add('hidden'); }
+
+    function resetGame() {
+      closeModal();
+      if (mode === 'online') {
+        socket.emit('game:reset');
+        return;
+      }
+      resetLocal();
+    }
+
+    function rematchGame() {
+      closeModal();
+      if (mode === 'online') {
+        socket.emit('rematch');
+        return;
+      }
+      resetLocal();
+    }
+
+    function leaveGame() {
+      if (aiTimer) clearTimeout(aiTimer);
+      socket.emit('leaveRoom');
+      location.href = '/games/blackjack.html';
+    }
+
+    function copyLink() {
+      if (!roomId) return;
+      copyToClipboard(`${location.origin}/games/blackjack.html?room=${roomId}`, $('copy-btn'), '✅');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      $('player-name').value = getDefaultName() || '';
+      const p = new URLSearchParams(location.search).get('room');
+      if (p) {
+        $('room-id').value = p;
+        $('online-panel').classList.remove('hidden');
+        $('join-form').classList.remove('hidden');
+        joinRoom();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>终极井字棋 - 沫芒游境</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    /* ===== Ultimate Tic-Tac-Toe board ===== */
+    .board-wrap {
+      width: 100%;
+      max-width: 560px;
+      aspect-ratio: 1;
+      margin: 0 auto;
+      padding: 6px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+    }
+
+    .ult-board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 4px;
+      width: 100%;
+      height: 100%;
+    }
+
+    .small-board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 2px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 4px;
+      position: relative;
+      transition: box-shadow 0.2s, transform 0.2s, background 0.2s;
+    }
+
+    .small-board.active {
+      box-shadow: 0 0 0 2px #6bcb77, 0 0 16px rgba(107,203,119,0.35);
+      background: rgba(107,203,119,0.12);
+    }
+
+    .small-board.won-x { background: rgba(255,107,107,0.18); }
+    .small-board.won-o { background: rgba(77,150,255,0.18); }
+    .small-board.draw { background: rgba(160,160,192,0.12); }
+
+    .small-board.won-x::after,
+    .small-board.won-o::after,
+    .small-board.draw::after {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      font-weight: 800;
+      opacity: 0.35;
+      pointer-events: none;
+      user-select: none;
+    }
+    .small-board.won-x::after { content: 'X'; color: #ff6b6b; }
+    .small-board.won-o::after { content: 'O'; color: #4d96ff; }
+    .small-board.draw::after { content: '═'; color: #a0a0c0; }
+
+    .ult-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.05);
+      border-radius: 6px;
+      font-size: clamp(0.95rem, 3.6vw, 1.5rem);
+      font-weight: 700;
+      cursor: default;
+      user-select: none;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s, transform 0.1s;
+    }
+
+    .ult-cell.empty { cursor: pointer; }
+    .ult-cell.empty:hover { background: rgba(255,255,255,0.14); }
+    .ult-cell.empty:active { transform: scale(0.92); }
+    .ult-cell.x { color: #ff6b6b; background: rgba(255,107,107,0.14); }
+    .ult-cell.o { color: #4d96ff; background: rgba(77,150,255,0.14); }
+    .ult-cell.last { box-shadow: inset 0 0 0 2px #ffd93d; }
+
+    .meta-board-wrap {
+      width: 100%;
+      max-width: 180px;
+      margin: 12px auto 0;
+    }
+
+    .meta-board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 4px;
+      aspect-ratio: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 4px;
+    }
+
+    .meta-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.05);
+      border-radius: 6px;
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+    .meta-cell.x { color: #ff6b6b; background: rgba(255,107,107,0.18); }
+    .meta-cell.o { color: #4d96ff; background: rgba(77,150,255,0.18); }
+    .meta-cell.draw { color: #a0a0c0; background: rgba(160,160,192,0.15); }
+
+    .meta-label {
+      text-align: center;
+      font-size: 0.78rem;
+      color: #aaa;
+      margin-top: 6px;
+    }
+
+    #meta-status {
+      margin-top: 6px;
+      font-size: 0.85rem;
+      color: #ffd93d;
+      min-height: 1.2em;
+    }
+
+    @media (max-width: 360px) {
+      .ult-cell { font-size: clamp(0.8rem, 3.8vw, 1.2rem); }
+      .small-board.won-x::after,
+      .small-board.won-o::after,
+      .small-board.draw::after { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>🎯 终极井字棋</h1>
+      <div class="settings-row">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </div>
+
+    <div id="lobby" class="screen active">
+      <div class="card">
+        <div class="form-group">
+          <label>你的名字</label>
+          <input type="text" id="player-name" placeholder="Player" maxlength="16">
+        </div>
+        <div class="mode-list">
+          <button class="btn btn-primary" onclick="startMode('ai')">🤖 人机对战</button>
+          <button class="btn btn-secondary" onclick="startMode('local')">👥 本地双人</button>
+          <button class="btn btn-warning" onclick="startMode('online')">🌐 在线对战</button>
+        </div>
+      </div>
+
+      <div id="online-panel" class="card" style="margin-top:14px;">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="sound-toggle" title="公开房间会显示在首页房间列表，私有房间只能通过房间号加入"><input type="checkbox" id="room-public-check" checked> 公开房间（可被搜索）</label>
+          <div id="room-privacy-hint" class="privacy-hint"></div>
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">➕ 创建房间</button>
+        <button class="btn btn-secondary" onclick="showJoin()">🔗 加入房间</button>
+        <button class="btn btn-warning" onclick="quickMatch()">⚡ 快速匹配</button>
+        <div id="join-form" class="hidden" style="margin-top:12px;">
+          <div class="form-group">
+            <label>房间号</label>
+            <input type="text" id="room-id" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;">
+          </div>
+          <button class="btn btn-primary" onclick="joinRoom()">进入房间</button>
+        </div>
+        <div id="error-msg" class="status-bar hidden" style="background:rgba(255,77,77,.15);color:#ff6b6b;"></div>
+      </div>
+    </div>
+
+    <div id="game" class="screen">
+      <div class="status-bar">
+        <div class="room-info-bar">
+          <span>房间:</span>
+          <span id="room-display" class="room-id">-</span>
+          <button class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:.8rem;" id="copy-btn" onclick="copyLink()">📋 复制</button>
+        </div>
+        <div class="player-badges">
+          <span id="badge-p1" class="badge">❌ <b id="name-p1">-</b></span>
+          <span id="badge-p2" class="badge">⭕ <b id="name-p2">-</b></span>
+        </div>
+        <div id="turn-text">你的回合</div>
+        <div id="meta-status"></div>
+      </div>
+
+      <div class="board-wrap">
+        <div id="ult-board" class="ult-board"></div>
+      </div>
+
+      <div class="meta-board-wrap">
+        <div id="meta-board" class="meta-board"></div>
+        <div class="meta-label">大局棋盘</div>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-warning" onclick="resetGame()">🔄 重新开始</button>
+        <button class="btn btn-danger" onclick="leaveGame()">🚪 离开</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">-</h2>
+      <button class="btn btn-primary" onclick="rematchGame()">再来一局</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/sounds.js"></script>
+  <script src="/auth.js"></script>
+  <script>
+    const socket = io();
+    const CLIENT_ID = localStorage.getItem('gameBoxClientId') || ('c' + Math.random().toString(36).substring(2, 10));
+    localStorage.setItem('gameBoxClientId', CLIENT_ID);
+
+    let mode = null;
+    let roomId = null;
+    let mySymbol = 1;
+    let players = [];
+    let state = createInitialState();
+
+    const $ = id => document.getElementById(id);
+    const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+    function play(s) { if (Sounds && Sounds.sfxEnabled()) Sounds[s](); }
+    function enableSound() { if (Sounds) Sounds.enable(); }
+
+    function showScreen(el) {
+      $('lobby').classList.remove('active');
+      $('game').classList.remove('active');
+      el.classList.add('active');
+    }
+
+    function getName() { return $('player-name').value.trim() || 'Player'; }
+
+    function createInitialState() {
+      return {
+        board: Array.from({ length: 9 }, () => Array(9).fill(0)),
+        metaBoard: Array.from({ length: 3 }, () => Array(3).fill(0)),
+        activeBoard: null,
+        currentPlayer: 1,
+        firstPlayer: 1,
+        gameOver: false,
+        winner: null,
+        status: 'playing',
+        lastMove: null,
+        rematchVotes: null
+      };
+    }
+
+    function cloneState(s) {
+      return {
+        board: s.board.map(row => row.slice()),
+        metaBoard: s.metaBoard.map(row => row.slice()),
+        activeBoard: s.activeBoard ? s.activeBoard.slice() : null,
+        currentPlayer: s.currentPlayer,
+        firstPlayer: s.firstPlayer,
+        gameOver: s.gameOver,
+        winner: s.winner,
+        status: s.status,
+        lastMove: s.lastMove ? { ...s.lastMove } : null,
+        rematchVotes: s.rematchVotes ? { ...s.rematchVotes } : null
+      };
+    }
+
+    function checkWin3(b, p) {
+      return LINES.some(([a,b2,c]) => {
+        const ar = Math.floor(a/3), ac = a%3;
+        const br = Math.floor(b2/3), bc = b2%3;
+        const cr = Math.floor(c/3), cc = c%3;
+        return b[ar][ac] === p && b[br][bc] === p && b[cr][cc] === p;
+      });
+    }
+
+    function smallBoardWin(board, br, bc, p) {
+      const b = [[0,0,0],[0,0,0],[0,0,0]];
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) b[r][c] = board[br*3+r][bc*3+c];
+      return checkWin3(b, p);
+    }
+
+    function smallBoardFull(board, br, bc) {
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) if (board[br*3+r][bc*3+c] === 0) return false;
+      return true;
+    }
+
+    function metaWin(meta, p) {
+      return LINES.some(([a,b2,c]) => {
+        const ar = Math.floor(a/3), ac = a%3;
+        const br = Math.floor(b2/3), bc = b2%3;
+        const cr = Math.floor(c/3), cc = c%3;
+        return meta[ar][ac] === p && meta[br][bc] === p && meta[cr][cc] === p;
+      });
+    }
+
+    function getLegalMoves(s) {
+      if (s.gameOver) return [];
+      const moves = [];
+      if (s.activeBoard) {
+        const [br, bc] = s.activeBoard;
+        for (let sr = 0; sr < 3; sr++) for (let sc = 0; sc < 3; sc++) {
+          const r = br*3 + sr, c = bc*3 + sc;
+          if (s.board[r][c] === 0) moves.push({ row: r, col: c });
+        }
+        return moves;
+      }
+      for (let br = 0; br < 3; br++) for (let bc = 0; bc < 3; bc++) if (s.metaBoard[br][bc] === 0) {
+        for (let sr = 0; sr < 3; sr++) for (let sc = 0; sc < 3; sc++) {
+          const r = br*3 + sr, c = bc*3 + sc;
+          if (s.board[r][c] === 0) moves.push({ row: r, col: c });
+        }
+      }
+      return moves;
+    }
+
+    function simulateMove(s, move, player) {
+      const ns = cloneState(s);
+      ns.board[move.row][move.col] = player;
+      const br = Math.floor(move.row / 3), bc = Math.floor(move.col / 3);
+      if (smallBoardWin(ns.board, br, bc, player)) ns.metaBoard[br][bc] = player;
+      else if (smallBoardFull(ns.board, br, bc)) ns.metaBoard[br][bc] = 3;
+      const nbr = move.row % 3, nbc = move.col % 3;
+      ns.activeBoard = ns.metaBoard[nbr][nbc] === 0 ? [nbr, nbc] : null;
+      if (metaWin(ns.metaBoard, player)) { ns.gameOver = true; ns.winner = player; ns.status = 'ended'; }
+      else if (ns.metaBoard.flat().every(v => v !== 0)) { ns.gameOver = true; ns.winner = null; ns.status = 'ended'; }
+      else ns.currentPlayer = ns.currentPlayer === 1 ? 2 : 1;
+      ns.lastMove = { row: move.row, col: move.col, symbol: player };
+      return ns;
+    }
+
+    function evaluate(s, player) {
+      if (s.gameOver) {
+        if (s.winner === player) return 100000;
+        if (s.winner === null) return 0;
+        return -100000;
+      }
+      const opponent = player === 1 ? 2 : 1;
+      let score = 0;
+      // Small boards
+      for (let br = 0; br < 3; br++) for (let bc = 0; bc < 3; bc++) {
+        const mb = s.metaBoard[br][bc];
+        if (mb === player) score += 120;
+        else if (mb === opponent) score -= 120;
+        else if (mb !== 3) {
+          for (const line of LINES) {
+            let own = 0, opp = 0, empty = 0;
+            for (const idx of line) {
+              const sr = Math.floor(idx/3), sc = idx%3;
+              const v = s.board[br*3+sr][bc*3+sc];
+              if (v === player) own++;
+              else if (v === opponent) opp++;
+              else empty++;
+            }
+            if (own === 2 && empty === 1) score += 35;
+            if (opp === 2 && empty === 1) score -= 60;
+            if (own === 1 && empty === 2) score += 7;
+            if (opp === 1 && empty === 2) score -= 5;
+          }
+          if (s.board[br*3+1][bc*3+1] === player) score += 5;
+          else if (s.board[br*3+1][bc*3+1] === opponent) score -= 5;
+        }
+      }
+      // Meta board
+      for (const line of LINES) {
+        let own = 0, opp = 0, empty = 0;
+        for (const idx of line) {
+          const br = Math.floor(idx/3), bc = idx%3;
+          const v = s.metaBoard[br][bc];
+          if (v === player) own++;
+          else if (v === opponent) opp++;
+          else if (v === 0) empty++;
+        }
+        if (own === 2 && empty === 1) score += 300;
+        if (opp === 2 && empty === 1) score -= 600;
+        if (own === 1 && empty === 2) score += 35;
+        if (opp === 1 && empty === 2) score -= 28;
+      }
+      return score;
+    }
+
+    function chooseDepth(s) {
+      const moves = getLegalMoves(s);
+      if (moves.length <= 9) return 4;
+      if (moves.length <= 27) return 3;
+      return 2;
+    }
+
+    function minimax(s, depth, alpha, beta, maximizing, player) {
+      if (depth === 0 || s.gameOver) return evaluate(s, player);
+      const moves = getLegalMoves(s);
+      const opponent = player === 1 ? 2 : 1;
+      if (maximizing) {
+        let maxEval = -Infinity;
+        for (const m of moves) {
+          const ns = simulateMove(s, m, player);
+          const ev = minimax(ns, depth - 1, alpha, beta, false, player);
+          maxEval = Math.max(maxEval, ev);
+          alpha = Math.max(alpha, ev);
+          if (beta <= alpha) break;
+        }
+        return maxEval;
+      } else {
+        let minEval = Infinity;
+        for (const m of moves) {
+          const ns = simulateMove(s, m, opponent);
+          const ev = minimax(ns, depth - 1, alpha, beta, true, player);
+          minEval = Math.min(minEval, ev);
+          beta = Math.min(beta, ev);
+          if (beta <= alpha) break;
+        }
+        return minEval;
+      }
+    }
+
+    function aiMove() {
+      if (state.gameOver) return;
+      const player = 2;
+      const moves = getLegalMoves(state);
+      if (!moves.length) return;
+      let best = null;
+      // Immediate win
+      for (const m of moves) {
+        const ns = simulateMove(state, m, player);
+        if (ns.gameOver && ns.winner === player) { best = m; break; }
+      }
+      // Avoid moves that let opponent win immediately
+      if (!best) {
+        const opponent = player === 1 ? 2 : 1;
+        for (const m of moves) {
+          const ns = simulateMove(state, m, player);
+          const oppMoves = getLegalMoves(ns);
+          const losing = oppMoves.some(om => {
+            const os = simulateMove(ns, om, opponent);
+            return os.gameOver && os.winner === opponent;
+          });
+          if (!losing) { best = m; break; }
+        }
+      }
+      if (!best) {
+        const depth = chooseDepth(state);
+        let bestScore = -Infinity;
+        for (const m of moves) {
+          const ns = simulateMove(state, m, player);
+          const score = minimax(ns, depth, -Infinity, Infinity, false, player);
+          if (score > bestScore) { bestScore = score; best = m; }
+        }
+      }
+      if (best) setTimeout(() => makeMove(best.row, best.col, player), 250);
+    }
+
+    function startMode(m) {
+      mode = m; enableSound();
+      if (m === 'online') { $('online-panel').classList.remove('hidden'); return; }
+      state = createInitialState();
+      state.firstPlayer = 1; state.currentPlayer = 1;
+      $('room-display').textContent = m === 'ai' ? '人机' : '本地';
+      $('copy-btn').classList.add('hidden');
+      showScreen($('game')); drawBoard(); drawMetaBoard(); updateTurn(); updateBadges();
+      if (mode === 'ai' && state.currentPlayer === 2) setTimeout(aiMove, 300);
+    }
+
+    function showJoin() { $('join-form').classList.toggle('hidden'); }
+
+    function createRoom() {
+      socket.emit('createRoom', { gameType: 'ulttt', playerName: getName(), clientId: CLIENT_ID, isPublic: $('room-public-check').checked });
+    }
+
+    function quickMatch() {
+      socket.emit('quickMatch:join', { gameType: 'ulttt', playerName: getName(), clientId: CLIENT_ID });
+    }
+
+    function joinRoom() {
+      const id = $('room-id').value.trim().toUpperCase();
+      if (!id) return showError('请输入房间号');
+      socket.emit('joinRoom', { roomId: id, playerName: getName(), clientId: CLIENT_ID });
+    }
+
+    function showError(msg) {
+      $('error-msg').textContent = msg;
+      $('error-msg').classList.remove('hidden');
+      setTimeout(() => $('error-msg').classList.add('hidden'), 3000);
+    }
+
+    socket.on('roomCreated', (data) => {
+      const { roomId: id, player, players: ps, isPublic } = data;
+      const privacyHint = $('room-privacy-hint');
+      if (privacyHint) privacyHint.textContent = (isPublic !== false) ? '本房间为公开房间，会显示在房间列表' : '本房间为私有房间，仅可通过房间号加入';
+      roomId = id; mySymbol = player.symbol; mode = 'online'; players = ps || [{ name: player.name, symbol: player.symbol, isHost: true }];
+      enterOnline(); drawBoard(); drawMetaBoard(); updateTurn(); updateBadges();
+    });
+
+    socket.on('joinedRoom', (data) => {
+      const { roomId: id, state: s, you, players: ps, isPublic } = data;
+      const privacyHint = $('room-privacy-hint');
+      if (privacyHint) privacyHint.textContent = (isPublic !== false) ? '本房间为公开房间，会显示在房间列表' : '本房间为私有房间，仅可通过房间号加入';
+      roomId = id; mySymbol = you ? you.symbol : 2; mode = 'online'; players = ps || [];
+      enterOnline(); applyState(s);
+    });
+
+    socket.on('joinedAsSpectator', ({ roomId: id, state: s, players: ps }) => {
+      roomId = id; mySymbol = null; mode = 'online'; players = ps || [];
+      enterOnline(); applyState(s); $('turn-text').textContent = '👁️ 观战';
+    });
+
+    socket.on('reconnected', ({ roomId: id, state: s, player, players: ps }) => {
+      roomId = id; mySymbol = player ? player.symbol : 2; mode = 'online'; players = ps || [];
+      enterOnline(); applyState(s);
+    });
+
+    socket.on('quickMatch:found', (data) => {
+      roomId = data.roomId; mySymbol = data.you ? data.you.symbol : 1; mode = 'online'; players = data.players || [];
+      enterOnline();
+      if (data.state) applyState(data.state);
+      else { drawBoard(); drawMetaBoard(); updateTurn(); updateBadges(); }
+      showError('⚡ 匹配成功！');
+    });
+
+    socket.on('quickMatch:waiting', () => showError('⏳ 正在匹配对手...'));
+    socket.on('game:state', ({ state: s, players: ps }) => { if (ps) players = ps; applyState(s); });
+    socket.on('error', ({ message }) => showError(message));
+    socket.on('connect', () => { if (roomId) socket.emit('reconnect', { clientId: CLIENT_ID }); });
+    socket.on('reconnect:failed', () => { roomId = null; });
+
+    function enterOnline() {
+      $('online-panel').classList.add('hidden');
+      $('join-form').classList.add('hidden');
+      $('copy-btn').classList.remove('hidden');
+      $('room-display').textContent = roomId;
+      showScreen($('game'));
+    }
+
+    function applyState(s) {
+      state = s;
+      drawBoard(); drawMetaBoard(); updateTurn(); updateBadges();
+      if (state.gameOver) {
+        if (state.winner) showEnd(state.winner === mySymbol ? '你赢了!' : (mySymbol === null ? '比赛结束' : '你输了...'));
+        else showEnd('平局!');
+        play('win');
+      } else {
+        closeModal();
+      }
+      if (state.rematchVotes && mode === 'online' && mySymbol !== null) {
+        const oppSymbol = mySymbol === 1 ? 2 : 1;
+        if (state.rematchVotes[mySymbol] && state.rematchVotes[oppSymbol]) {
+          $('turn-text').textContent = '双方已准备，即将重新开始...';
+        } else if (state.rematchVotes[mySymbol]) {
+          $('turn-text').textContent = '你已准备再来一局，等待对手...';
+        }
+      }
+    }
+
+    function updateBadges() {
+      const p1 = players.find(p => p.symbol === 1), p2 = players.find(p => p.symbol === 2);
+      $('name-p1').textContent = mode === 'ai' ? '你' : (mode === 'local' ? '玩家X' : (p1 ? p1.name : '等待...'));
+      $('name-p2').textContent = mode === 'ai' ? 'AI' : (mode === 'local' ? '玩家O' : (p2 ? p2.name : '等待...'));
+      if (mode === 'online' && mySymbol !== null) {
+        $('name-p1').textContent += mySymbol === 1 ? ' (你)' : '';
+        $('name-p2').textContent += mySymbol === 2 ? ' (你)' : '';
+      }
+      $('badge-p1').classList.toggle('active', state.currentPlayer === 1 && !state.gameOver && (mode !== 'online' || state.status === 'playing'));
+      $('badge-p2').classList.toggle('active', state.currentPlayer === 2 && !state.gameOver && (mode !== 'online' || state.status === 'playing'));
+    }
+
+    function updateTurn() {
+      const el = $('turn-text');
+      if (state.gameOver) { el.textContent = '游戏结束'; $('meta-status').textContent = ''; return; }
+      if (mode === 'ai') el.textContent = state.currentPlayer === 1 ? '你的回合 (X)' : 'AI 思考中...';
+      else if (mode === 'local') el.textContent = state.currentPlayer === 1 ? 'X 回合' : 'O 回合';
+      else if (state.status === 'waiting') el.textContent = '等待对手加入...';
+      else {
+        if (mySymbol === null) el.textContent = '观战中';
+        else if (mySymbol === state.currentPlayer) el.textContent = '你的回合 (X/O)';
+        else el.textContent = '对手回合...';
+      }
+      const ms = $('meta-status');
+      if (state.activeBoard) ms.textContent = `当前必须下在 (${state.activeBoard[0]+1}, ${state.activeBoard[1]+1}) 小棋盘`;
+      else ms.textContent = '可自由选择小棋盘';
+    }
+
+    function canInteract() {
+      if (state.gameOver) return false;
+      if (mode === 'online') {
+        if (state.status !== 'playing') return false;
+        if (mySymbol === null) return false;
+        if (mySymbol !== state.currentPlayer) return false;
+      }
+      if (mode === 'ai' && state.currentPlayer !== 1) return false;
+      return true;
+    }
+
+    function drawBoard() {
+      const el = $('ult-board'); el.innerHTML = '';
+      for (let br = 0; br < 3; br++) {
+        for (let bc = 0; bc < 3; bc++) {
+          const sb = document.createElement('div');
+          sb.className = 'small-board';
+          if (state.activeBoard && state.activeBoard[0] === br && state.activeBoard[1] === bc) sb.classList.add('active');
+          const mb = state.metaBoard[br][bc];
+          if (mb === 1) sb.classList.add('won-x');
+          else if (mb === 2) sb.classList.add('won-o');
+          else if (mb === 3) sb.classList.add('draw');
+          for (let sr = 0; sr < 3; sr++) for (let sc = 0; sc < 3; sc++) {
+            const r = br*3 + sr, c = bc*3 + sc;
+            const val = state.board[r][c];
+            const cell = document.createElement('div');
+            cell.className = 'ult-cell' + (val === 1 ? ' x' : val === 2 ? ' o' : '');
+            cell.dataset.row = r; cell.dataset.col = c;
+            if (val === 1) cell.textContent = 'X';
+            else if (val === 2) cell.textContent = 'O';
+            if (val === 0 && canInteract()) {
+              if (!state.activeBoard || (state.activeBoard[0] === br && state.activeBoard[1] === bc)) {
+                cell.classList.add('empty');
+                cell.addEventListener('click', () => handleMove(r, c));
+              }
+            }
+            if (state.lastMove && state.lastMove.row === r && state.lastMove.col === c) cell.classList.add('last');
+            sb.appendChild(cell);
+          }
+          el.appendChild(sb);
+        }
+      }
+    }
+
+    function drawMetaBoard() {
+      const el = $('meta-board'); el.innerHTML = '';
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+        const val = state.metaBoard[r][c];
+        const cell = document.createElement('div');
+        cell.className = 'meta-cell' + (val === 1 ? ' x' : val === 2 ? ' o' : val === 3 ? ' draw' : '');
+        if (val === 1) cell.textContent = 'X';
+        else if (val === 2) cell.textContent = 'O';
+        else if (val === 3) cell.textContent = '═';
+        el.appendChild(cell);
+      }
+    }
+
+    function handleMove(r, c) {
+      if (!canInteract()) return;
+      if (state.board[r][c] !== 0) return;
+      if (state.activeBoard) {
+        const br = Math.floor(r/3), bc = Math.floor(c/3);
+        if (state.activeBoard[0] !== br || state.activeBoard[1] !== bc) return;
+      }
+      makeMove(r, c, state.currentPlayer);
+    }
+
+    function makeMove(r, c, player) {
+      if (state.board[r][c] !== 0 || state.gameOver) return;
+      if (mode === 'online') {
+        socket.emit('game:move', { row: r, col: c });
+        return;
+      }
+      state = simulateMove(state, { row: r, col: c }, player);
+      play('place');
+      afterMove();
+    }
+
+    function afterMove() {
+      drawBoard(); drawMetaBoard(); updateTurn(); updateBadges();
+      if (state.gameOver) {
+        if (state.winner) { showEnd(state.winner === 1 ? 'X 胜利!' : 'O 胜利!'); play('win'); }
+        else { showEnd('平局!'); }
+      } else if (mode === 'ai' && state.currentPlayer === 2) {
+        setTimeout(aiMove, 300);
+      }
+    }
+
+    function showEnd(text) { $('end-title').textContent = text; $('end-modal').classList.remove('hidden'); }
+    function closeModal() { $('end-modal').classList.add('hidden'); }
+
+    function resetGame() {
+      closeModal();
+      if (mode === 'online') socket.emit('game:reset');
+      else {
+        const nextFirst = state.firstPlayer === 1 ? 2 : 1;
+        state = createInitialState();
+        state.firstPlayer = nextFirst; state.currentPlayer = nextFirst;
+        drawBoard(); drawMetaBoard(); updateTurn(); updateBadges();
+        if (mode === 'ai' && state.currentPlayer === 2) setTimeout(aiMove, 300);
+      }
+    }
+
+    function rematchGame() {
+      closeModal();
+      if (mode === 'online') socket.emit('rematch');
+      else resetGame();
+    }
+
+    function leaveGame() {
+      socket.emit('leaveRoom');
+      location.href = '/games/ulttt.html';
+    }
+
+    function copyLink() {
+      if (!roomId) return;
+      copyToClipboard(`${location.origin}/games/ulttt.html?room=${roomId}`, $('copy-btn'), '✅');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      $('player-name').value = (typeof getDefaultName === 'function' ? getDefaultName() : '') || '';
+      const p = new URLSearchParams(location.search).get('room');
+      if (p) {
+        $('room-id').value = p;
+        $('online-panel').classList.remove('hidden');
+        $('join-form').classList.remove('hidden');
+        joinRoom();
+      }
+    });
+  </script>
+</body>
+</html>

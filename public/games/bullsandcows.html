@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>猜数字 - 沫芒游境</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .bc-panels {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .secret-panel, .guess-panel, .history-panel {
+      width: 100%;
+      max-width: 560px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .panel-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .panel-status {
+      font-size: 0.8rem;
+      color: #aaa;
+      font-weight: normal;
+    }
+    .digit-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .digit-box {
+      width: 52px;
+      height: 58px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      font-size: 1.6rem;
+      font-weight: 700;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .digit-box::-webkit-outer-spin-button,
+    .digit-box::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .digit-box:focus { border-color: #6bcb77; background: rgba(107,203,119,0.08); }
+    .digit-box:disabled { opacity: 0.6; }
+    .reveal-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: #aaa;
+      cursor: pointer;
+    }
+    .guess-panel { text-align: center; }
+    .guess-label {
+      font-size: 0.9rem;
+      color: #ccc;
+      margin-bottom: 10px;
+    }
+    .history-panel { padding: 12px 14px; }
+    .history-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .history-table th, .history-table td {
+      padding: 7px 4px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .history-table th { color: #aaa; font-weight: 500; }
+    .history-table .guess-digits {
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+    }
+    .result-a { color: #ff6b6b; font-weight: 700; }
+    .result-b { color: #4d96ff; font-weight: 700; }
+    .empty-row { color: #888; padding: 14px 0; text-align: center; }
+    .hint-text {
+      font-size: 0.8rem;
+      color: #888;
+      margin-top: 8px;
+      text-align: center;
+    }
+    .waiting-box {
+      width: 100%;
+      max-width: 560px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 14px;
+      padding: 22px;
+      text-align: center;
+      color: #aaa;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 380px) {
+      .digit-box { width: 44px; height: 52px; font-size: 1.4rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>🐂🐄 猜数字</h1>
+      <div class="settings-row">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </div>
+
+    <div id="lobby" class="screen active">
+      <div class="card">
+        <div class="form-group">
+          <label>你的名字</label>
+          <input type="text" id="player-name" placeholder="Player" maxlength="16">
+        </div>
+        <div class="mode-list">
+          <button class="btn btn-primary" onclick="startMode('ai')">🤖 人机对战</button>
+          <button class="btn btn-secondary" onclick="startMode('local')">👥 本地双人</button>
+          <button class="btn btn-warning" onclick="startMode('online')">🌐 在线对战</button>
+        </div>
+      </div>
+
+      <div id="online-panel" class="card" style="margin-top:14px;">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="sound-toggle" title="公开房间会显示在首页房间列表，私有房间只能通过房间号加入"><input type="checkbox" id="room-public-check" checked> 公开房间（可被搜索）</label>
+          <div id="room-privacy-hint" class="privacy-hint"></div>
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">➕ 创建房间</button>
+        <button class="btn btn-secondary" onclick="showJoin()">🔗 加入房间</button>
+        <button class="btn btn-warning" onclick="quickMatch()">⚡ 快速匹配</button>
+        <div id="join-form" class="hidden" style="margin-top:12px;">
+          <div class="form-group">
+            <label>房间号</label>
+            <input type="text" id="room-id" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;">
+          </div>
+          <button class="btn btn-primary" onclick="joinRoom()">进入房间</button>
+        </div>
+        <div id="error-msg" class="status-bar hidden" style="background:rgba(255,77,77,.15);color:#ff6b6b;"></div>
+      </div>
+    </div>
+
+    <div id="game" class="screen">
+      <div class="status-bar">
+        <div class="room-info-bar">
+          <span>房间:</span>
+          <span id="room-display" class="room-id">-</span>
+          <button class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:.8rem;" id="copy-btn" onclick="copyLink()">📋 复制</button>
+        </div>
+        <div class="player-badges">
+          <span id="badge-p1" class="badge">🧑 <b id="name-p1">-</b></span>
+          <span id="badge-p2" class="badge">🤖 <b id="name-p2">-</b></span>
+        </div>
+        <div id="turn-text">准备阶段</div>
+      </div>
+
+      <div id="waiting-box" class="waiting-box hidden">等待对手加入...</div>
+
+      <div id="secret-setup" class="bc-panels">
+        <div id="secret-p1" class="secret-panel">
+          <div class="panel-title">
+            <span id="title-p1">玩家1 的数字</span>
+            <span id="status-p1" class="panel-status">未设置</span>
+          </div>
+          <div class="digit-row" id="row-p1">
+            <input type="password" class="digit-box" id="s1-d0" inputmode="numeric" maxlength="1">
+            <input type="password" class="digit-box" id="s1-d1" inputmode="numeric" maxlength="1">
+            <input type="password" class="digit-box" id="s1-d2" inputmode="numeric" maxlength="1">
+            <input type="password" class="digit-box" id="s1-d3" inputmode="numeric" maxlength="1">
+          </div>
+          <button class="btn btn-primary" id="btn-p1" onclick="submitSecret(1)">设置数字</button>
+          <label class="reveal-toggle"><input type="checkbox" id="reveal-p1" onchange="toggleReveal(1)"> 显示数字</label>
+        </div>
+        <div id="secret-p2" class="secret-panel">
+          <div class="panel-title">
+            <span id="title-p2">玩家2 的数字</span>
+            <span id="status-p2" class="panel-status">未设置</span>
+          </div>
+          <div class="digit-row" id="row-p2">
+            <input type="password" class="digit-box" id="s2-d0" inputmode="numeric" maxlength="1">
+            <input type="password" class="digit-box" id="s2-d1" inputmode="numeric" maxlength="1">
+            <input type="password" class="digit-box" id="s2-d2" inputmode="numeric" maxlength="1">
+            <input type="password" class="digit-box" id="s2-d3" inputmode="numeric" maxlength="1">
+          </div>
+          <button class="btn btn-secondary" id="btn-p2" onclick="submitSecret(2)">设置数字</button>
+          <label class="reveal-toggle"><input type="checkbox" id="reveal-p2" onchange="toggleReveal(2)"> 显示数字</label>
+        </div>
+      </div>
+
+      <div id="guess-section" class="guess-panel hidden">
+        <div class="guess-label" id="guess-label">输入 4 位不重复数字</div>
+        <div class="digit-row">
+          <input type="text" class="digit-box" id="g-d0" inputmode="numeric" maxlength="1">
+          <input type="text" class="digit-box" id="g-d1" inputmode="numeric" maxlength="1">
+          <input type="text" class="digit-box" id="g-d2" inputmode="numeric" maxlength="1">
+          <input type="text" class="digit-box" id="g-d3" inputmode="numeric" maxlength="1">
+        </div>
+        <button class="btn btn-primary" id="guess-btn" onclick="submitGuess()">提交猜测</button>
+      </div>
+
+      <div id="history-section" class="history-panel hidden">
+        <div class="history-title">猜测记录</div>
+        <table class="history-table">
+          <thead><tr><th>玩家</th><th>猜测</th><th>A</th><th>B</th></tr></thead>
+          <tbody id="history-body"><tr><td colspan="4" class="empty-row">暂无记录</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-warning" onclick="resetGame()">🔄 重新开始</button>
+        <button class="btn btn-danger" onclick="leaveGame()">🚪 离开</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">-</h2>
+      <p id="end-subtitle"></p>
+      <button class="btn btn-primary" onclick="rematchGame()">再来一局</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/sounds.js"></script>
+  <script src="/auth.js"></script>
+  <script>
+    const socket = io();
+    const CLIENT_ID = localStorage.getItem('gameBoxClientId') || ('c' + Math.random().toString(36).substring(2, 10));
+    localStorage.setItem('gameBoxClientId', CLIENT_ID);
+
+    let mode = null;
+    let roomId = null;
+    let mySymbol = 1;
+    let players = [];
+    let roomState = { status: 'waiting', secrets: { 1: null, 2: null }, guesses: [], currentPlayer: 1, firstPlayer: 1, gameOver: false, winner: null };
+    let localSecrets = { 1: null, 2: null };
+    let mySecret = null;
+    let aiSecret = null;
+    let aiPossible = [];
+    let aiTimer = null;
+
+    const $ = id => document.getElementById(id);
+    function play(s) { if (Sounds && Sounds.sfxEnabled()) Sounds[s](); }
+    function enableSound() { if (Sounds) Sounds.enable(); }
+
+    function showScreen(el) {
+      $('lobby').classList.remove('active');
+      $('game').classList.remove('active');
+      el.classList.add('active');
+    }
+    function getName() { return $('player-name').value.trim() || 'Player'; }
+
+    // ----- Core logic -----
+    function bcResult(secret, guess) {
+      let bulls = 0, cows = 0;
+      for (let i = 0; i < 4; i++) if (guess[i] === secret[i]) bulls++;
+      for (let i = 0; i < 4; i++) if (guess[i] !== secret[i] && secret.includes(guess[i])) cows++;
+      return { bulls, cows };
+    }
+    function allUniqueDigits(digits) {
+      return digits.length === 4 && new Set(digits).size === 4 && digits.every(d => Number.isInteger(d) && d >= 0 && d <= 9);
+    }
+    function generateAllSecrets() {
+      const out = [];
+      for (let a = 0; a <= 9; a++)
+        for (let b = 0; b <= 9; b++) if (b !== a)
+          for (let c = 0; c <= 9; c++) if (c !== a && c !== b)
+            for (let d = 0; d <= 9; d++) if (d !== a && d !== b && d !== c)
+              out.push([a, b, c, d]);
+      return out;
+    }
+    function randomSecret() {
+      const pool = generateAllSecrets();
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    // ----- Mode start -----
+    function startMode(m) {
+      mode = m; enableSound();
+      closeModal();
+      if (m === 'online') { $('online-panel').classList.remove('hidden'); return; }
+      initLocalGame();
+      $('room-display').textContent = m === 'ai' ? '人机' : '本地';
+      $('copy-btn').classList.add('hidden');
+      showScreen($('game'));
+      render();
+    }
+    function initLocalGame() {
+      roomState = { status: mode === 'ai' ? 'setting' : 'setting', secrets: { 1: null, 2: null }, guesses: [], currentPlayer: 1, firstPlayer: 1, gameOver: false, winner: null };
+      localSecrets = { 1: null, 2: null };
+      mySecret = null;
+      aiSecret = mode === 'ai' ? randomSecret() : null;
+      aiPossible = generateAllSecrets();
+      clearTimeout(aiTimer);
+      clearDigits('s1'); clearDigits('s2'); clearDigits('g');
+      document.getElementById('reveal-p1').checked = false;
+      document.getElementById('reveal-p2').checked = false;
+      toggleReveal(1); toggleReveal(2);
+    }
+
+    // ----- Online lobby -----
+    function showJoin() { $('join-form').classList.toggle('hidden'); }
+    function createRoom() { socket.emit('createRoom', { gameType: 'bullsandcows', playerName: getName(), isPublic: $('room-public-check').checked, clientId: CLIENT_ID }); }
+    function quickMatch() { socket.emit('quickMatch:join', { gameType: 'bullsandcows', playerName: getName(), clientId: CLIENT_ID }); }
+    function joinRoom() {
+      const id = $('room-id').value.trim().toUpperCase();
+      if (!id) return showError('请输入房间号');
+      socket.emit('joinRoom', { roomId: id, playerName: getName(), clientId: CLIENT_ID });
+    }
+    function showError(msg) { $('error-msg').textContent = msg; $('error-msg').classList.remove('hidden'); setTimeout(() => $('error-msg').classList.add('hidden'), 3000); }
+
+    socket.on('roomCreated', (data) => {
+      const { roomId: id, player, isPublic } = data;
+      const privacyHint = $('room-privacy-hint');
+      if (privacyHint) privacyHint.textContent = (isPublic !== false) ? '本房间为公开房间，会显示在房间列表' : '本房间为私有房间，仅可通过房间号加入';
+      roomId = id; mySymbol = player ? player.symbol : 1; mode = 'online'; players = [{ name: getName(), symbol: mySymbol, isHost: true, connected: true }];
+      enterOnline(); render();
+    });
+    socket.on('joinedRoom', (data) => {
+      const { roomId: id, state, you, players: ps } = data;
+      const privacyHint = $('room-privacy-hint');
+      if (privacyHint) privacyHint.textContent = (data.isPublic !== false) ? '本房间为公开房间，会显示在房间列表' : '本房间为私有房间，仅可通过房间号加入';
+      roomId = id; mySymbol = you ? you.symbol : 2; mode = 'online'; players = ps || [];
+      enterOnline(); applyState(state);
+    });
+    socket.on('joinedAsSpectator', ({ roomId: id, state, players: ps }) => { roomId = id; mySymbol = null; mode = 'online'; players = ps || []; enterOnline(); applyState(state); });
+    socket.on('reconnected', ({ roomId: id, state, player, players: ps }) => { roomId = id; mySymbol = player ? player.symbol : 2; mode = 'online'; players = ps || []; enterOnline(); applyState(state); });
+    socket.on('quickMatch:found', ({ roomId: id, you, players: ps, state }) => { roomId = id; mySymbol = you ? you.symbol : 1; mode = 'online'; players = ps || []; enterOnline(); if (state) applyState(state); else render(); showError('⚡ 匹配成功！'); });
+    socket.on('quickMatch:waiting', () => { showError('⏳ 正在匹配对手...'); });
+    socket.on('game:state', ({ state, players: ps }) => { if (ps) players = ps; applyState(state); });
+    socket.on('error', ({ message }) => showError(message));
+    socket.on('connect', () => { if (roomId) socket.emit('reconnect', { clientId: CLIENT_ID }); });
+    socket.on('reconnect:failed', () => { roomId = null; });
+
+    function enterOnline() {
+      $('online-panel').classList.add('hidden');
+      $('join-form').classList.add('hidden');
+      $('copy-btn').classList.remove('hidden');
+      $('room-display').textContent = roomId;
+      showScreen($('game'));
+    }
+    function applyState(state) {
+      const prevStatus = roomState.status;
+      roomState = { secrets: { 1: null, 2: null }, ...(state || roomState) };
+      // New setting phase means secrets were reset (rematch / rejoin / reset).
+      if (mode === 'online' && roomState.status === 'setting' && prevStatus !== 'setting') {
+        mySecret = null;
+      }
+      render();
+      if (roomState.gameOver) {
+        const winner = roomState.winner;
+        let title, sub;
+        if (mode === 'online') {
+          if (mySymbol === null) { title = '比赛结束'; sub = winner ? `${nameFor(winner)} 获胜` : ''; }
+          else if (winner === mySymbol) { title = '你赢了！'; sub = '率先猜中对方数字'; play('win'); }
+          else { title = '你输了...'; sub = '对手先猜中了你的数字'; play('lose'); }
+        } else {
+          title = `${nameFor(winner)} 获胜！`;
+          sub = `答案：${winner === 1 ? secretString(localSecrets[1]) : secretString(localSecrets[2] || aiSecret)}`;
+          play('win');
+        }
+        showEnd(title, sub);
+      } else {
+        closeModal();
+      }
+      if (roomState.rematchVotes && mode === 'online' && mySymbol !== null) {
+        const opp = mySymbol === 1 ? 2 : 1;
+        if (roomState.rematchVotes[mySymbol] && roomState.rematchVotes[opp]) {
+          $('turn-text').textContent = '双方已准备，即将重新开始...';
+        } else if (roomState.rematchVotes[mySymbol]) {
+          $('turn-text').textContent = '你已准备再来一局，等待对手...';
+        }
+      }
+    }
+
+    // ----- Render -----
+    function nameFor(symbol) {
+      if (mode === 'ai') return symbol === 1 ? '你' : 'AI';
+      if (mode === 'local') return symbol === 1 ? '玩家1' : '玩家2';
+      const p = players.find(x => x.symbol === symbol);
+      return p ? p.name : (symbol === 1 ? '玩家1' : '玩家2');
+    }
+    function updateBadges() {
+      const p1 = players.find(p => p.symbol === 1), p2 = players.find(p => p.symbol === 2);
+      $('name-p1').textContent = mode === 'ai' ? '你' : (mode === 'local' ? '玩家1' : (p1 ? p1.name : '等待...'));
+      $('name-p2').textContent = mode === 'ai' ? 'AI' : (mode === 'local' ? '玩家2' : (p2 ? p2.name : '等待...'));
+      if (mode === 'online' && mySymbol !== null) {
+        if (mySymbol === 1) $('name-p1').textContent += ' (你)';
+        else $('name-p2').textContent += ' (你)';
+      }
+      const active = !roomState.gameOver && roomState.status === 'playing';
+      $('badge-p1').classList.toggle('active', active && roomState.currentPlayer === 1);
+      $('badge-p2').classList.toggle('active', active && roomState.currentPlayer === 2);
+    }
+    function updateTurnText() {
+      const t = $('turn-text');
+      if (roomState.gameOver) { t.textContent = '游戏结束'; return; }
+      if (roomState.status === 'waiting') { t.textContent = mode === 'online' ? '等待对手加入...' : '等待开始'; return; }
+      if (roomState.status === 'setting') {
+        if (mode === 'online') {
+          if (mySymbol === null) { t.textContent = '观战：设置阶段'; return; }
+          const opp = mySymbol === 1 ? 2 : 1;
+          if (!mySecret) t.textContent = '请设置你的 4 位数字';
+          else if (!roomState.secrets[opp]) t.textContent = '等待对手设置数字...';
+          else t.textContent = '设置完成';
+        } else {
+          const need1 = !localSecrets[1], need2 = !localSecrets[2];
+          if (need1 && need2) t.textContent = '双方请设置数字';
+          else if (need1) t.textContent = '等待玩家1 设置数字';
+          else if (need2) t.textContent = '等待玩家2 设置数字';
+          else t.textContent = '设置完成';
+        }
+        return;
+      }
+      if (mode === 'ai') t.textContent = roomState.currentPlayer === 1 ? '你的回合，请猜测' : 'AI 思考中...';
+      else if (mode === 'local') t.textContent = `${nameFor(roomState.currentPlayer)} 回合，请猜测`;
+      else {
+        if (mySymbol === null) t.textContent = '观战中';
+        else if (mySymbol === roomState.currentPlayer) t.textContent = '你的回合，请猜测';
+        else t.textContent = '对手回合...';
+      }
+    }
+    function render() {
+      updateBadges();
+      updateTurnText();
+
+      // Waiting box
+      const waiting = mode === 'online' && roomState.status === 'waiting';
+      $('waiting-box').classList.toggle('hidden', !waiting);
+
+      // Secret panels visibility
+      const isSetting = roomState.status === 'setting';
+      $('secret-setup').classList.toggle('hidden', !isSetting || waiting);
+      $('secret-p1').classList.remove('hidden');
+      if (mode === 'ai') {
+        $('secret-p2').classList.add('hidden');
+      } else if (mode === 'local') {
+        $('secret-p2').classList.remove('hidden');
+      } else {
+        // online: show my panel and opponent panel
+        if (mySymbol === 1) { $('secret-p1').classList.remove('hidden'); $('secret-p2').classList.remove('hidden'); }
+        else if (mySymbol === 2) { $('secret-p1').classList.remove('hidden'); $('secret-p2').classList.remove('hidden'); }
+        else { $('secret-p1').classList.add('hidden'); $('secret-p2').classList.add('hidden'); }
+      }
+
+      // Secret panel labels & states
+      setPanel(1);
+      setPanel(2);
+
+      // Guess section
+      const canGuess = roomState.status === 'playing' && !roomState.gameOver && canInteract();
+      $('guess-section').classList.toggle('hidden', roomState.status !== 'playing' || waiting);
+      $('guess-label').textContent = roomState.status === 'playing' ? (mode === 'local' ? `${nameFor(roomState.currentPlayer)} 请输入猜测` : (mode === 'online' && mySymbol !== roomState.currentPlayer ? '对手思考中...' : '输入 4 位不重复数字')) : '输入 4 位不重复数字';
+      $('guess-btn').disabled = !canGuess;
+      setDigitsDisabled('g', !canGuess);
+
+      // History
+      $('history-section').classList.remove('hidden');
+      renderHistory();
+
+      // AI move
+      if (mode === 'ai' && roomState.status === 'playing' && !roomState.gameOver && roomState.currentPlayer === 2) {
+        clearTimeout(aiTimer);
+        aiTimer = setTimeout(aiMove, 700);
+      }
+    }
+    function setPanel(pn) {
+      const isAiOpp = mode === 'ai' && pn === 2;
+      const isMe = (mode === 'online' && mySymbol === pn) || (mode === 'ai' && pn === 1) || (mode === 'local');
+      const secret = mode === 'online' ? (mySymbol === pn ? mySecret : roomState.secrets[pn]) : localSecrets[pn];
+      const title = $(`title-p${pn}`);
+      const status = $(`status-p${pn}`);
+      const btn = $(`btn-p${pn}`);
+      const reveal = $(`reveal-p${pn}`);
+
+      if (mode === 'online') {
+        title.textContent = (mySymbol === pn ? '你的数字' : `${nameFor(pn)} 的数字`) + (pn === 1 ? '' : '');
+      } else if (mode === 'ai') {
+        title.textContent = pn === 1 ? '你的数字' : 'AI 的数字';
+      } else {
+        title.textContent = pn === 1 ? '玩家1 的数字' : '玩家2 的数字';
+      }
+
+      if (isAiOpp) {
+        status.textContent = aiSecret ? '已设置' : '未设置';
+        btn.classList.add('hidden');
+        reveal.parentElement.classList.add('hidden');
+        setDigitsDisabled(`s${pn}`, true);
+        if (aiSecret) setDigits(`s${pn}`, aiSecret);
+        return;
+      }
+
+      const ready = !!secret;
+      status.textContent = ready ? '已设置' : '未设置';
+      reveal.parentElement.classList.remove('hidden');
+
+      const canSet = (mode !== 'online') || (mySymbol === pn && !ready);
+      btn.classList.toggle('hidden', ready || !canSet);
+      setDigitsDisabled(`s${pn}`, ready || !canSet);
+      if (ready) {
+        setDigits(`s${pn}`, secret);
+      }
+    }
+    function renderHistory() {
+      const tbody = $('history-body');
+      const list = (roomState.guesses || []).slice().reverse();
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-row">暂无记录</td></tr>'; return; }
+      tbody.innerHTML = list.map(g => {
+        const digits = (g.digits || g.guess || []).join('');
+        const bulls = g.bulls ?? g.A ?? 0;
+        const cows = g.cows ?? g.B ?? 0;
+        return `<tr><td>${nameFor(g.player)}</td><td class="guess-digits">${digits}</td><td class="result-a">${bulls}A</td><td class="result-b">${cows}B</td></tr>`;
+      }).join('');
+    }
+    function canInteract() {
+      if (roomState.gameOver) return false;
+      if (mode === 'online') {
+        if (mySymbol === null) return false;
+        if (roomState.status !== 'playing') return false;
+        return mySymbol === roomState.currentPlayer;
+      }
+      if (mode === 'ai') return roomState.currentPlayer === 1;
+      return true; // local current player handled in submitGuess
+    }
+
+    // ----- Inputs -----
+    function getDigits(prefix) {
+      const d = [];
+      for (let i = 0; i < 4; i++) d.push(parseInt(document.getElementById(`${prefix}-d${i}`).value, 10));
+      return d;
+    }
+    function setDigits(prefix, arr) {
+      for (let i = 0; i < 4; i++) document.getElementById(`${prefix}-d${i}`).value = arr[i] ?? '';
+    }
+    function clearDigits(prefix) {
+      for (let i = 0; i < 4; i++) document.getElementById(`${prefix}-d${i}`).value = '';
+    }
+    function setDigitsDisabled(prefix, disabled) {
+      for (let i = 0; i < 4; i++) document.getElementById(`${prefix}-d${i}`).disabled = disabled;
+    }
+    function toggleReveal(pn) {
+      const checked = document.getElementById(`reveal-p${pn}`).checked;
+      const type = checked ? 'text' : 'password';
+      for (let i = 0; i < 4; i++) document.getElementById(`s${pn}-d${i}`).type = type;
+    }
+
+    // ----- Actions -----
+    function submitSecret(pn) {
+      const digits = getDigits(`s${pn}`);
+      if (!allUniqueDigits(digits)) return showError('请输入 4 个不重复的 0-9 数字');
+      play('place');
+      if (mode === 'online') {
+        mySecret = digits;
+        socket.emit('game:move', { phase: 'secret', digits });
+        render();
+        return;
+      }
+      localSecrets[pn] = digits;
+      if (mode === 'ai') {
+        // AI already has secret; start playing
+        if (localSecrets[1] && aiSecret) {
+          roomState.status = 'playing';
+          roomState.currentPlayer = roomState.firstPlayer;
+          clearDigits('s1');
+        }
+      } else {
+        if (localSecrets[1] && localSecrets[2]) {
+          roomState.status = 'playing';
+          roomState.currentPlayer = roomState.firstPlayer;
+          clearDigits('s1'); clearDigits('s2');
+        }
+      }
+      render();
+    }
+    function submitGuess() {
+      const digits = getDigits('g');
+      if (!allUniqueDigits(digits)) return showError('请输入 4 个不重复的 0-9 数字');
+      if (mode === 'local' && roomState.currentPlayer) {
+        const secret = localSecrets[roomState.currentPlayer === 1 ? 2 : 1];
+        if (!secret) return;
+      }
+      if (mode === 'online') {
+        socket.emit('game:move', { phase: 'guess', digits });
+        clearDigits('g');
+        return;
+      }
+      makeGuess(digits, roomState.currentPlayer);
+      clearDigits('g');
+    }
+    function makeGuess(digits, player) {
+      const secret = player === 1 ? (mode === 'ai' ? aiSecret : localSecrets[2]) : localSecrets[1];
+      if (!secret) return;
+      const res = bcResult(secret, digits);
+      roomState.guesses.push({ player, digits: digits.slice(), bulls: res.bulls, cows: res.cows });
+      play('place');
+      if (res.bulls === 4) {
+        roomState.gameOver = true;
+        roomState.winner = player;
+        roomState.status = 'ended';
+        render();
+        play('win');
+        showEnd(`${nameFor(player)} 获胜！`, `答案：${secretString(secret)}`);
+      } else {
+        roomState.currentPlayer = player === 1 ? 2 : 1;
+        render();
+      }
+    }
+    function secretString(s) { return s ? s.join('') : '????'; }
+
+    // ----- AI -----
+    function aiMove() {
+      if (mode !== 'ai' || roomState.status !== 'playing' || roomState.gameOver || roomState.currentPlayer !== 2) return;
+      // filter by all AI guesses and results
+      const myGuesses = roomState.guesses.filter(g => g.player === 2);
+      aiPossible = aiPossible.filter(sec => myGuesses.every(g => {
+        const r = bcResult(sec, g.digits);
+        return r.bulls === g.bulls && r.cows === g.cows;
+      }));
+      let pick;
+      if (!aiPossible.length) { aiPossible = generateAllSecrets(); pick = aiPossible[Math.floor(Math.random() * aiPossible.length)]; }
+      else pick = aiPossible[Math.floor(Math.random() * aiPossible.length)];
+      makeGuess(pick, 2);
+    }
+
+    // ----- Modal / controls -----
+    function showEnd(title, sub) { $('end-title').textContent = title; $('end-subtitle').textContent = sub || ''; $('end-modal').classList.remove('hidden'); }
+    function closeModal() { $('end-modal').classList.add('hidden'); }
+    function resetGame() {
+      closeModal();
+      if (mode === 'online') {
+        socket.emit('game:reset');
+      } else {
+        initLocalGame();
+        render();
+      }
+    }
+    function rematchGame() {
+      closeModal();
+      if (mode === 'online') socket.emit('rematch');
+      else resetGame();
+    }
+    function leaveGame() {
+      socket.emit('leaveRoom');
+      location.href = '/games/bullsandcows.html';
+    }
+    function copyLink() { if (!roomId) return; copyToClipboard(`${location.origin}/games/bullsandcows.html?room=${roomId}`, $('copy-btn'), '✅'); }
+
+    // ----- Input UX -----
+    function setupDigitInputs(prefix) {
+      for (let i = 0; i < 4; i++) {
+        const el = document.getElementById(`${prefix}-d${i}`);
+        if (!el) continue;
+        el.addEventListener('input', (e) => {
+          const v = el.value.replace(/\D/g, '').slice(-1);
+          el.value = v;
+          if (v && i < 3) {
+            const next = document.getElementById(`${prefix}-d${i + 1}`);
+            if (next && !next.disabled) next.focus();
+          }
+        });
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Backspace' && !el.value && i > 0) {
+            const prev = document.getElementById(`${prefix}-d${i - 1}`);
+            if (prev && !prev.disabled) { prev.focus(); prev.select(); }
+          }
+          if (e.key === 'Enter') {
+            if (prefix.startsWith('s')) submitSecret(parseInt(prefix[1], 10));
+            else if (prefix === 'g') submitGuess();
+          }
+        });
+        el.addEventListener('paste', (e) => {
+          e.preventDefault();
+          const txt = (e.clipboardData.getData('text') || '').replace(/\D/g, '').split('').slice(0, 4);
+          for (let j = 0; j < txt.length; j++) {
+            const target = document.getElementById(`${prefix}-d${j}`);
+            if (target) target.value = txt[j];
+          }
+        });
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      $('player-name').value = getDefaultName() || '';
+      setupDigitInputs('s1');
+      setupDigitInputs('s2');
+      setupDigitInputs('g');
+      const p = new URLSearchParams(location.search).get('room');
+      if (p) {
+        $('room-id').value = p;
+        $('online-panel').classList.remove('hidden');
+        $('join-form').classList.remove('hidden');
+        startMode('online');
+        joinRoom();
+      }
+    });
+  </script>
+</body>
+</html>

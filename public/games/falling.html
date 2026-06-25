@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>天降奇物 - AI 游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .game-header { padding: 4px 0 6px; gap: 8px; }
+    .game-header h1 { font-size: 1.1rem; }
+    #falling-canvas { display: block; margin: 0 auto; border-radius: 12px; background: #87CEEB; touch-action: none; width: 100%; max-width: 420px; height: auto; }
+    .hud { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 0.85rem; color: #eee; background: rgba(255,255,255,0.06); border-radius: 10px; margin-bottom: 6px; }
+    .hud span { font-weight: 600; }
+    .controls { margin-top: 8px; display: flex; gap: 8px; justify-content: center; }
+    .canvas-wrap { position: relative; display: inline-block; }
+    .start-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,10,25,0.88); border-radius: 12px; color: #fff; z-index: 10; cursor: pointer; }
+    .start-overlay h2 { font-size: 1.4rem; margin-bottom: 8px; }
+    .start-overlay p { font-size: 0.85rem; color: #aaa; }
+    .touch-controls { display: none; justify-content: center; gap: 20px; margin-top: 10px; }
+    .touch-btn { width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #fff; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; -webkit-user-drag: none; }
+    .touch-btn:active { background: rgba(255,255,255,0.2); }
+    @media (pointer: coarse) { .touch-controls { display: flex; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>📦 天降奇物</h1>
+    </div>
+    <div class="hud">
+      <div>💯 <span id="hud-score">0</span></div>
+      <div>❤️ <span id="hud-lives">❤️❤️❤️</span></div>
+      <div>🛡️ <span id="hud-shield">0</span></div>
+      <div>🏆 <span id="hud-best">0</span></div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="falling-canvas" width="360" height="500"></canvas>
+      <div class="start-overlay" id="start-overlay">
+        <h2>📦 天降奇物</h2>
+        <p>接住宝物得分，躲开炸弹；拾取 ❤️ 回血、🛡️ 获得10秒护盾！</p>
+        <p style="margin-top:12px;font-size:1rem;">点击 / 按空格开始</p>
+      </div>
+    </div>
+    <div class="touch-controls">
+      <button class="touch-btn" id="btn-left">◀</button>
+      <button class="touch-btn" id="btn-right">▶</button>
+    </div>
+    <div class="controls">
+      <button class="btn btn-primary" onclick="startGame()">▶ 开始</button>
+      <button class="btn btn-warning" onclick="pauseGame()">⏸ 暂停</button>
+    </div>
+  </div>
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">💥 游戏结束</h2>
+      <p id="end-subtitle">得分: 0</p>
+      <button class="btn btn-primary" onclick="startGame()">再来一局</button>
+    </div>
+  </div>
+  <script>
+  (function(){
+    const canvas=document.getElementById('falling-canvas'),ctx=canvas.getContext('2d');
+    const W=canvas.width,H=canvas.height;
+    const overlay=document.getElementById('start-overlay'),endModal=document.getElementById('end-modal');
+    const ITEMS=[
+      {score:10,type:'good',weight:24,emoji:'🎁'},
+      {score:12,type:'good',weight:20,emoji:'🍎'},
+      {score:15,type:'good',weight:18,emoji:'⭐'},
+      {score:18,type:'good',weight:16,emoji:'💰'},
+      {score:20,type:'good',weight:16,emoji:'💎'},
+      {score:25,type:'good',weight:14,emoji:'🍀'},
+      {score:30,type:'good',weight:12,emoji:'🌟'},
+      {score:35,type:'good',weight:10,emoji:'🌈'},
+      {score:0,type:'bad',weight:22,emoji:'💣'},
+      {score:0,type:'heal',weight:1,emoji:'❤️'},
+      {score:0,type:'shield',weight:2,emoji:'🛡️'},
+    ];
+    function pickItem(){
+      const total=ITEMS.reduce((s,it)=>s+it.weight,0);
+      let r=Math.random()*total;
+      for(const it of ITEMS){r-=it.weight;if(r<=0)return it;}
+      return ITEMS[ITEMS.length-1];
+    }
+    let state='idle',basket,falls,score,lives,level,spawnTimer,fallSpeed,lifeStartScore,best=+localStorage.getItem('fallingBest')||0;
+    let combo=0,comboTimer=0,particles=[];
+    let shieldActive=false,shieldTime=0,shieldFlash=0,timer=0;
+    document.getElementById('hud-best').textContent=best;
+
+    function reset(){
+      basket={x:W/2,w:60,h:16};
+      falls=[];score=0;lives=3;level=1;spawnTimer=0;fallSpeed=2.5;combo=0;comboTimer=0;particles=[];lifeStartScore=0;
+      shieldActive=false;shieldTime=0;shieldFlash=0;timer=0;
+      updateHud();
+    }
+    function updateHud(){
+      document.getElementById('hud-score').textContent=score;
+      document.getElementById('hud-lives').textContent='❤️'.repeat(lives)+'🤍'.repeat(Math.max(0,3-lives));
+      document.getElementById('hud-shield').textContent=shieldActive?Math.ceil(shieldTime/60)+'s':'0';
+    }
+    window.startGame=function(){endModal.classList.add('hidden');overlay.classList.add('hidden');reset();state='playing';};
+    window.pauseGame=function(){if(state==='playing')state='paused';else if(state==='paused')state='playing';};
+    overlay.addEventListener('click',()=>{if(state==='idle')startGame();});
+
+    let keys={};
+    document.addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'&&state==='idle')startGame();});
+    document.addEventListener('keyup',e=>{keys[e.code]=false;});
+    let touchDir=0;
+    document.getElementById('btn-left').addEventListener('touchstart',e=>{e.preventDefault();touchDir=-1;},{passive:false});
+    document.getElementById('btn-left').addEventListener('touchend',()=>{touchDir=0;});
+    document.getElementById('btn-right').addEventListener('touchstart',e=>{e.preventDefault();touchDir=1;},{passive:false});
+    document.getElementById('btn-right').addEventListener('touchend',()=>{touchDir=0;});
+
+    let mouseX=null;
+    canvas.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect();mouseX=(e.clientX-r.left)/r.width*W;});
+    canvas.addEventListener('touchmove',e=>{const r=canvas.getBoundingClientRect();mouseX=(e.touches[0].clientX-r.left)/r.width*W;},{passive:true});
+
+    function spawnItem(){
+      const item=pickItem();
+      const sz=34+Math.random()*14;
+      falls.push({x:sz/2+Math.random()*(W-sz),y:-sz,w:sz,h:sz,...item,vy:fallSpeed,rot:(Math.random()-0.5)*0.1});
+    }
+
+    function spawnParticles(x,y,color,n){
+      for(let i=0;i<n;i++){
+        particles.push({x,y,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5-2,life:30+Math.random()*15,color,r:2+Math.random()*4});
+      }
+    }
+
+    function update(){
+      if(state!=='playing')return;
+      timer++;
+      // move basket
+      let dir=0;
+      if(keys.ArrowLeft||keys.KeyA||touchDir===-1)dir=-1;
+      if(keys.ArrowRight||keys.KeyD||touchDir===1)dir=1;
+      if(mouseX!==null){basket.x+=(mouseX-basket.x)*0.15;mouseX=null;}
+      else basket.x+=dir*6;
+      basket.x=Math.max(basket.w/2,Math.min(W-basket.w/2,basket.x));
+      // spawn - more drops, rate scales with level
+      spawnTimer++;
+      const rate=Math.max(20,45-(level-1)*2);
+      if(spawnTimer>=rate){spawnItem();if(Math.random()<0.35)spawnItem();spawnTimer=0;}
+      // level
+      level=1+Math.floor(score/100);
+      fallSpeed=2.5+Math.floor((score-lifeStartScore)/100)*0.15;
+      // combo
+      comboTimer++;
+      if(comboTimer>90)combo=0;
+      // shield timer
+      if(shieldActive){
+        shieldTime--;
+        if(shieldTime<=0){shieldActive=false;shieldTime=0;}
+      }
+      if(shieldFlash>0)shieldFlash--;
+      // items
+      for(let i=falls.length-1;i>=0;i--){
+        const f=falls[i];
+        f.y+=f.vy;
+        f.rot+=0.02;
+        if(f.y>H+30){
+          falls.splice(i,1);continue;
+        }
+        // catch
+        if(f.y+f.h/2>=H-basket.h-10&&f.y-f.h/2<=H-10&&Math.abs(f.x-basket.x)<(basket.w+f.w)/2){
+          if(f.type==='good'){
+            combo++;comboTimer=0;
+            const bonus=combo>=5?3:combo>=3?2:1;
+            score+=f.score*bonus;
+            spawnParticles(f.x,f.y,'#ffd93d',6);
+          }else if(f.type==='bad'){
+            if(shieldActive){
+              shieldActive=false;shieldTime=0;shieldFlash=24;
+              spawnParticles(f.x,f.y,'#00e5ff',12);
+            }else{
+              lives--;
+              spawnParticles(f.x,f.y,'#ff4d6a',10);
+              if(lives<=0){updateHud();die();return;}
+              lifeStartScore=score;
+            }
+          }else if(f.type==='heal'){
+            lives=Math.min(3,lives+1);
+            spawnParticles(f.x,f.y,'#ff6b9d',8);
+          }else if(f.type==='shield'){
+            shieldActive=true;shieldTime=600; // 10 seconds at ~60fps
+            shieldFlash=10;
+            spawnParticles(f.x,f.y,'#00e5ff',10);
+          }
+          falls.splice(i,1);
+        }
+      }
+      // particles
+      for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.1;p.life--;if(p.life<=0)particles.splice(i,1);}
+      updateHud();
+    }
+    function die(){
+      state='dead';
+      if(score>best){best=score;localStorage.setItem('fallingBest',best);document.getElementById('hud-best').textContent=best;}
+      document.getElementById('end-subtitle').textContent='得分: '+score+' · 等级: '+level;
+      endModal.classList.remove('hidden');
+    }
+
+    function render(){
+      ctx.fillStyle='#87CEEB';ctx.fillRect(0,0,W,H);
+      // basket
+      ctx.fillStyle='#4d96ff';
+      ctx.beginPath();
+      ctx.moveTo(basket.x-basket.w/2,H-10);
+      ctx.lineTo(basket.x-basket.w/2+8,H-basket.h-10);
+      ctx.lineTo(basket.x+basket.w/2-8,H-basket.h-10);
+      ctx.lineTo(basket.x+basket.w/2,H-10);
+      ctx.closePath();ctx.fill();
+      // shield halo
+      if(shieldActive){
+        const pulse=(Math.sin(timer*0.15)+1)/2;
+        const alpha=0.25+pulse*0.25;
+        ctx.save();
+        ctx.strokeStyle=`rgba(0,229,255,${0.6+pulse*0.3})`;
+        ctx.lineWidth=3;
+        ctx.shadowColor='#00e5ff';
+        ctx.shadowBlur=12+pulse*10;
+        ctx.beginPath();
+        ctx.ellipse(basket.x,H-18,basket.w/2+8+pulse*4,12+pulse*4,0,0,Math.PI*2);
+        ctx.stroke();
+        ctx.fillStyle=`rgba(0,229,255,${alpha})`;
+        ctx.fill();
+        if(timer%20<10){
+          ctx.fillStyle='#fff';
+          ctx.font='bold 14px sans-serif';
+          ctx.textAlign='center';
+          ctx.fillText('🛡️',basket.x,H-basket.h-28);
+        }
+        ctx.restore();
+      }else if(shieldFlash>0 && Math.floor(timer/3)%2===0){
+        ctx.strokeStyle='rgba(0,229,255,0.5)';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.ellipse(basket.x,H-18,basket.w/2+6,10,0,0,Math.PI*2);
+        ctx.stroke();
+      }
+      // items
+      for(const f of falls){
+        ctx.save();
+        ctx.translate(f.x,f.y);
+        ctx.rotate(f.rot||0);
+        ctx.shadowColor='rgba(0,0,0,0.25)';
+        ctx.shadowBlur=5;
+        ctx.font=`${Math.floor(f.w*0.9)}px sans-serif`;
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ctx.fillText(f.emoji,0,1);
+        ctx.restore();
+      }
+      // particles
+      for(const p of particles){
+        ctx.globalAlpha=Math.max(0,p.life/35);
+        ctx.fillStyle=p.color;
+        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+      }
+      ctx.globalAlpha=1;
+      // combo
+      if(combo>=3){ctx.fillStyle='#ffd93d';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText(`Combo x${combo}!`,W/2,30);}
+    }
+
+    function loop(){update();render();requestAnimationFrame(loop);}
+    reset();
+    loop();
+  })();
+
+  /* === 8-bit Music === */
+  (function(){
+    let ctx,musicOn=true,playing=false,intervalId=null;
+    const NOTES={C4:262,D4:294,E4:330,F4:349,G4:392,A4:440,B4:494,C5:523,D5:587,E5:659,G5:784};
+    const {C4,D4,E4,F4,G4,A4,B4,C5,D5,E5,G5}=NOTES;
+    // Cheerful bouncy falling melody
+    const melody=[
+      [C5,.1],[G4,.1],[E4,.1],[C4,.1],[E4,.1],[G4,.1],[C5,.15],[G4,.05],
+      [D5,.1],[A4,.1],[F4,.1],[D4,.1],[F4,.1],[A4,.1],[D5,.15],[A4,.05],
+      [E5,.1],[B4,.1],[G4,.1],[E4,.1],[G4,.1],[B4,.1],[E5,.15],[B4,.05],
+      [C5,.1],[E5,.1],[G5,.1],[E5,.1],[C5,.1],[G4,.1],[E4,.15],[C4,.05]
+    ];
+    let pos=0;
+    function playNote(freq,dur){
+      if(!ctx)return;
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type='square';o.frequency.value=freq;
+      g.gain.setValueAtTime(0.1,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+dur*0.8);
+      o.connect(g);g.connect(ctx.destination);
+      o.start();o.stop(ctx.currentTime+dur);
+    }
+    function step(){
+      if(!musicOn||!playing)return;
+      const[n,d]=melody[pos%melody.length];
+      playNote(n,d*0.9);pos++;
+    }
+    function startMusic(){
+      if(!ctx)ctx=new(window.AudioContext||window.webkitAudioContext)();
+      if(ctx.state==='suspended')ctx.resume();
+      if(!playing){playing=true;pos=0;intervalId=setInterval(step,140);}
+    }
+    ['click','keydown','touchstart'].forEach(evt=>document.addEventListener(evt,startMusic,{once:true}));
+  })();
+  </script>
+</body>
+</html>

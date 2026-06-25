@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>象棋迷你版 - AI 游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    :root {
+      --sq-light: #f0d9b5;
+      --sq-dark: #b58863;
+      --sq-selected: rgba(107, 203, 119, .55);
+      --sq-legal: rgba(107, 203, 119, .4);
+      --sq-last: rgba(255, 217, 61, .35);
+      --sq-check: rgba(255, 77, 77, .55);
+    }
+
+    .board-outer {
+      width: min(92vw, 380px);
+      margin: 0 auto 10px;
+    }
+
+    .chess-board {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(6, 1fr);
+      aspect-ratio: 5 / 6;
+      border: 3px solid #8b6914;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, .4);
+    }
+
+    .square {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(1.6rem, 10vw, 2.4rem);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform .1s, box-shadow .1s;
+    }
+
+    .square.light { background: var(--sq-light); color: #222; }
+    .square.dark { background: var(--sq-dark); color: #fff; }
+    .square:active { transform: scale(0.94); }
+
+    .square.selected { box-shadow: inset 0 0 0 4px #6bcb77; z-index: 2; }
+    .square.last-move { box-shadow: inset 0 0 0 3px #ffd93d; z-index: 1; }
+    .square.check::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--sq-check);
+      pointer-events: none;
+    }
+
+    .square.legal::before {
+      content: '';
+      position: absolute;
+      width: 26%;
+      height: 26%;
+      background: rgba(0, 0, 0, .22);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .square.light.legal::before { background: rgba(0, 0, 0, .18); }
+    .square.legal.capture::before {
+      width: 100%;
+      height: 100%;
+      border-radius: 0;
+      background: rgba(107, 203, 119, .22);
+      border: 3px solid rgba(107, 203, 119, .7);
+    }
+
+    .piece { z-index: 2; text-shadow: 0 1px 2px rgba(0, 0, 0, .25); line-height: 1; }
+    .coord {
+      position: absolute;
+      bottom: 2px;
+      left: 4px;
+      font-size: .55rem;
+      opacity: .65;
+      font-weight: 700;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .game-info {
+      width: 100%;
+      max-width: 560px;
+      text-align: center;
+      color: #aaa;
+      font-size: .85rem;
+      margin: 8px 0;
+    }
+
+    .check-text {
+      color: #ff6b6b;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+
+    .captured-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      font-size: .75rem;
+      color: #ccc;
+    }
+
+    .captured-pieces {
+      font-size: 1rem;
+      letter-spacing: -1px;
+    }
+
+    .privacy-hint {
+      font-size: .75rem;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 360px) {
+      .square { font-size: clamp(1.4rem, 9vw, 2rem); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>♟️ 象棋迷你版</h1>
+      <div class="settings-row">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </div>
+
+    <div id="lobby" class="screen active">
+      <div class="card">
+        <div class="form-group">
+          <label>你的名字</label>
+          <input type="text" id="player-name" placeholder="Player" maxlength="16">
+        </div>
+        <div class="mode-list">
+          <button class="btn btn-primary" onclick="startMode('ai')">🤖 人机对战</button>
+          <button class="btn btn-secondary" onclick="startMode('local')">👥 本地双人</button>
+          <button class="btn btn-warning" onclick="startMode('online')">🌐 在线对战</button>
+        </div>
+      </div>
+
+      <div id="online-panel" class="card" style="margin-top:14px;">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="sound-toggle" title="公开房间会显示在首页房间列表，私有房间只能通过房间号加入"><input type="checkbox" id="room-public-check" checked> 公开房间（可被搜索）</label>
+          <div id="room-privacy-hint" class="privacy-hint"></div>
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">➕ 创建房间</button>
+        <button class="btn btn-secondary" onclick="showJoin()">🔗 加入房间</button>
+        <button class="btn btn-warning" onclick="quickMatch()">⚡ 快速匹配</button>
+        <div id="join-form" class="hidden" style="margin-top:12px;">
+          <div class="form-group">
+            <label>房间号</label>
+            <input type="text" id="room-id" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;">
+          </div>
+          <button class="btn btn-primary" onclick="joinRoom()">进入房间</button>
+        </div>
+        <div id="error-msg" class="status-bar hidden" style="background:rgba(255,77,77,.15);color:#ff6b6b;"></div>
+      </div>
+    </div>
+
+    <div id="game" class="screen">
+      <div class="status-bar">
+        <div class="room-info-bar">
+          <span>房间:</span>
+          <span id="room-display" class="room-id">-</span>
+          <button class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:.8rem;" id="copy-btn" onclick="copyLink()">📋 复制</button>
+        </div>
+        <div class="player-badges">
+          <span id="badge-p1" class="badge">
+            ♔ <b id="name-p1">-</b>
+            <span class="captured-row" id="cap-row-p1"><span class="captured-pieces" id="cap-p1"></span></span>
+          </span>
+          <span id="badge-p2" class="badge">
+            ♚ <b id="name-p2">-</b>
+            <span class="captured-row" id="cap-row-p2"><span class="captured-pieces" id="cap-p2"></span></span>
+          </span>
+        </div>
+        <div id="turn-text">你的回合</div>
+        <div id="check-text" class="check-text hidden">⚠️ 将军！</div>
+      </div>
+
+      <div class="board-outer">
+        <div class="chess-board" id="chess-board"></div>
+      </div>
+
+      <div class="game-info">
+        <div id="last-move">最后一步：-</div>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-warning" onclick="resetGame()">🔄 重新开始</button>
+        <button class="btn btn-danger" onclick="leaveGame()">🚪 离开</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">-</h2>
+      <button class="btn btn-primary" onclick="rematchGame()">再来一局</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/sounds.js"></script>
+  <script src="/auth.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      const socket = io();
+      const CLIENT_ID = localStorage.getItem('gameBoxClientId') || ('c' + Math.random().toString(36).substring(2, 10));
+      localStorage.setItem('gameBoxClientId', CLIENT_ID);
+
+      const ROWS = 6, COLS = 5;
+      const FILES = 'abcde';
+      const PIECE = {
+        K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
+        k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟'
+      };
+      const VALUE = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+      const ROOK_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      const BISHOP_DIRS = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+      const KNIGHT_JUMPS = [[2, 1], [2, -1], [-2, 1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]];
+      const KING_DIRS = ROOK_DIRS.concat(BISHOP_DIRS);
+      const MATE_SCORE = 100000;
+
+      let mode = null;
+      let roomId = null;
+      let myPlayer = 1;
+      let players = [];
+      let roomState = { status: 'waiting' };
+
+      let board = [];
+      let currentPlayer = 1;
+      let firstPlayer = 1;
+      let gameOver = false;
+      let winner = null;
+      let captured = { 1: [], 2: [] };
+      let check = { 1: false, 2: false };
+      let lastMove = null;
+
+      let selected = null;
+      let legalDests = [];
+
+      const $ = id => document.getElementById(id);
+
+      function playSound(name) {
+        try { if (Sounds && typeof Sounds[name] === 'function') Sounds[name](); } catch (e) {}
+      }
+      function enableSound() { try { if (Sounds) Sounds.enable(); } catch (e) {} }
+
+      function showScreen(el) {
+        $('lobby').classList.remove('active');
+        $('game').classList.remove('active');
+        el.classList.add('active');
+      }
+      function getName() { return $('player-name').value.trim() || 'Player'; }
+
+      function initialBoard() {
+        return [
+          ['r', 'n', 'b', 'k', 'q'],
+          ['p', 'p', 'p', 'p', 'p'],
+          ['', '', '', '', ''],
+          ['', '', '', '', ''],
+          ['P', 'P', 'P', 'P', 'P'],
+          ['R', 'N', 'B', 'K', 'Q']
+        ];
+      }
+
+      function deepClone(b) { return b.map(row => row.slice()); }
+      function inBounds(r, c) { return r >= 0 && r < ROWS && c >= 0 && c < COLS; }
+      function pieceColor(p) { return !p ? 0 : (p === p.toUpperCase() ? 1 : 2); }
+      function isOwn(p, player) { return pieceColor(p) === player; }
+      function isEnemy(p, player) { const c = pieceColor(p); return c !== 0 && c !== player; }
+      function opponent(player) { return player === 1 ? 2 : 1; }
+
+      function pseudoMovesForSquare(b, r, c, player) {
+        const p = b[r][c];
+        if (!isOwn(p, player)) return [];
+        const type = p.toLowerCase();
+        const moves = [];
+        const add = (nr, nc, promo) => {
+          if (inBounds(nr, nc)) moves.push({ from: { r, c }, to: { r: nr, c: nc }, promotion: promo || '' });
+        };
+        const addSlide = dirs => {
+          for (const [dr, dc] of dirs) {
+            let nr = r + dr, nc = c + dc;
+            while (inBounds(nr, nc)) {
+              const t = b[nr][nc];
+              if (!t) add(nr, nc);
+              else { if (isEnemy(t, player)) add(nr, nc); break; }
+              nr += dr; nc += dc;
+            }
+          }
+        };
+        switch (type) {
+          case 'r': addSlide(ROOK_DIRS); break;
+          case 'b': addSlide(BISHOP_DIRS); break;
+          case 'q': addSlide(ROOK_DIRS.concat(BISHOP_DIRS)); break;
+          case 'n':
+            for (const [dr, dc] of KNIGHT_JUMPS) add(r + dr, c + dc);
+            break;
+          case 'k':
+            for (const [dr, dc] of KING_DIRS) add(r + dr, c + dc);
+            break;
+          case 'p': {
+            const dir = player === 1 ? -1 : 1;
+            const startRow = player === 1 ? 4 : 1;
+            const promoRow = player === 1 ? 0 : 5;
+            const nr = r + dir;
+            if (inBounds(nr, c) && !b[nr][c]) {
+              if (nr === promoRow) ['q', 'r', 'b', 'n'].forEach(x => add(nr, c, x));
+              else add(nr, c);
+              if (r === startRow && !b[r + 2 * dir][c]) add(r + 2 * dir, c);
+            }
+            for (const dc of [-1, 1]) {
+              const nc = c + dc;
+              if (inBounds(nr, nc) && isEnemy(b[nr][nc], player)) {
+                if (nr === promoRow) ['q', 'r', 'b', 'n'].forEach(x => add(nr, nc, x));
+                else add(nr, nc);
+              }
+            }
+            break;
+          }
+        }
+        return moves;
+      }
+
+      function pseudoLegalMoves(b, player) {
+        const moves = [];
+        for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) moves.push(...pseudoMovesForSquare(b, r, c, player));
+        return moves;
+      }
+
+      function applyMove(b, move) {
+        const nb = deepClone(b);
+        const p = nb[move.from.r][move.from.c];
+        nb[move.from.r][move.from.c] = '';
+        let moved = p;
+        if (p.toLowerCase() === 'p' && (move.to.r === 0 || move.to.r === ROWS - 1)) {
+          const promo = (move.promotion || 'q').toLowerCase();
+          moved = p === p.toUpperCase() ? promo.toUpperCase() : promo;
+        }
+        nb[move.to.r][move.to.c] = moved;
+        return nb;
+      }
+
+      function findKing(b, player) {
+        const k = player === 1 ? 'K' : 'k';
+        for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (b[r][c] === k) return { r, c };
+        return null;
+      }
+
+      function isInCheck(b, player) {
+        const king = findKing(b, player);
+        if (!king) return false;
+        const opp = opponent(player);
+        const moves = pseudoLegalMoves(b, opp);
+        return moves.some(m => m.to.r === king.r && m.to.c === king.c);
+      }
+
+      function generateLegalMoves(b, player) {
+        return pseudoLegalMoves(b, player).filter(m => !isInCheck(applyMove(b, m), player));
+      }
+
+      function hasLegalMoves(b, player) {
+        return generateLegalMoves(b, player).length > 0;
+      }
+
+      function evaluateBoard(b) {
+        let score = 0;
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const p = b[r][c];
+            if (!p) continue;
+            const v = VALUE[p.toLowerCase()] || 0;
+            score += (p === p.toUpperCase()) ? -v : v;
+          }
+        }
+        const whiteMoves = generateLegalMoves(b, 1).length;
+        const blackMoves = generateLegalMoves(b, 2).length;
+        score += (blackMoves - whiteMoves) * 5;
+        if (isInCheck(b, 2)) score -= 45;
+        if (isInCheck(b, 1)) score += 45;
+        return score;
+      }
+
+      function minimax(b, depth, alpha, beta, maximizing, player) {
+        const moves = generateLegalMoves(b, player);
+        if (moves.length === 0) {
+          if (isInCheck(b, player)) return player === 2 ? MATE_SCORE + depth : -MATE_SCORE - depth;
+          return 0;
+        }
+        if (depth === 0) return evaluateBoard(b);
+        const next = opponent(player);
+        if (maximizing) {
+          let best = -Infinity;
+          for (const m of moves) {
+            const score = minimax(applyMove(b, m), depth - 1, alpha, beta, false, next);
+            best = Math.max(best, score);
+            alpha = Math.max(alpha, score);
+            if (beta <= alpha) break;
+          }
+          return best;
+        } else {
+          let best = Infinity;
+          for (const m of moves) {
+            const score = minimax(applyMove(b, m), depth - 1, alpha, beta, true, next);
+            best = Math.min(best, score);
+            beta = Math.min(beta, score);
+            if (beta <= alpha) break;
+          }
+          return best;
+        }
+      }
+
+      function aiMove() {
+        if (gameOver || mode !== 'ai' || currentPlayer !== 2) return;
+        const moves = generateLegalMoves(board, 2);
+        if (!moves.length) return;
+        let bestScore = -Infinity;
+        const bestMoves = [];
+        for (const m of moves) {
+          const nb = applyMove(board, m);
+          const score = minimax(nb, 2, -Infinity, Infinity, false, 1);
+          if (score > bestScore) { bestScore = score; bestMoves.length = 0; bestMoves.push(m); }
+          else if (score === bestScore) bestMoves.push(m);
+        }
+        const move = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+        makeLocalMove(move);
+      }
+
+      function startMode(m) {
+        mode = m;
+        enableSound();
+        if (m === 'online') {
+          $('online-panel').classList.remove('hidden');
+          return;
+        }
+        resetLocal();
+        $('room-display').textContent = m === 'ai' ? '人机' : '本地';
+        $('copy-btn').classList.add('hidden');
+        showScreen($('game'));
+        updateAll();
+        if (mode === 'ai' && currentPlayer === 2) setTimeout(aiMove, 400);
+      }
+
+      function showJoin() { $('join-form').classList.toggle('hidden'); }
+      function showError(msg) { $('error-msg').textContent = msg; $('error-msg').classList.remove('hidden'); setTimeout(() => $('error-msg').classList.add('hidden'), 3500); }
+
+      function createRoom() {
+        socket.emit('createRoom', { gameType: 'minichess', playerName: getName(), clientId: CLIENT_ID, isPublic: $('room-public-check').checked });
+      }
+      function quickMatch() {
+        socket.emit('quickMatch:join', { gameType: 'minichess', playerName: getName(), clientId: CLIENT_ID });
+      }
+      function joinRoom() {
+        const id = $('room-id').value.trim().toUpperCase();
+        if (!id) return showError('请输入房间号');
+        socket.emit('joinRoom', { roomId: id, playerName: getName(), clientId: CLIENT_ID });
+      }
+
+      function playerSymbol(p) { return p && (p.symbol || p.player || p.number || p.side); }
+
+      socket.on('roomCreated', data => {
+        roomId = data.roomId;
+        myPlayer = data.player ? (playerSymbol(data.player) || 1) : 1;
+        mode = 'online';
+        players = data.players || [];
+        updatePrivacyHint(data.isPublic);
+        enterOnline();
+        resetLocal();
+        if (data.state) applyState(data.state);
+        updateAll();
+      });
+      socket.on('joinedRoom', data => {
+        roomId = data.roomId;
+        myPlayer = data.you ? (playerSymbol(data.you) || 2) : 2;
+        mode = 'online';
+        players = data.players || [];
+        updatePrivacyHint(data.isPublic);
+        enterOnline();
+        applyState(data.state);
+      });
+      socket.on('joinedAsSpectator', data => {
+        roomId = data.roomId;
+        myPlayer = null;
+        mode = 'online';
+        players = data.players || [];
+        enterOnline();
+        applyState(data.state);
+      });
+      socket.on('reconnected', data => {
+        roomId = data.roomId;
+        myPlayer = data.player ? (playerSymbol(data.player) || 2) : 2;
+        mode = 'online';
+        players = data.players || [];
+        enterOnline();
+        applyState(data.state);
+      });
+      socket.on('quickMatch:found', data => {
+        roomId = data.roomId;
+        myPlayer = data.you ? (playerSymbol(data.you) || 1) : 1;
+        mode = 'online';
+        players = data.players || [];
+        enterOnline();
+        resetLocal();
+        updateAll();
+        showError('⚡ 匹配成功！');
+      });
+      socket.on('quickMatch:waiting', () => showError('⏳ 正在匹配对手...'));
+      socket.on('game:state', data => {
+        const payload = data && data.state ? data : { state: data };
+        if (payload.players) players = payload.players;
+        applyState(payload.state);
+      });
+      socket.on('error', ({ message }) => showError(message));
+      socket.on('connect', () => { if (roomId) socket.emit('reconnect', { clientId: CLIENT_ID }); });
+      socket.on('reconnect:failed', () => { roomId = null; });
+
+      function updatePrivacyHint(isPublic) {
+        const el = $('room-privacy-hint');
+        if (!el) return;
+        el.textContent = (isPublic !== false) ? '本房间为公开房间，会显示在房间列表' : '本房间为私有房间，仅可通过房间号加入';
+      }
+
+      function enterOnline() {
+        $('online-panel').classList.add('hidden');
+        $('join-form').classList.add('hidden');
+        $('copy-btn').classList.remove('hidden');
+        $('room-display').textContent = roomId;
+        showScreen($('game'));
+      }
+
+      function applyState(state) {
+        if (!state) return;
+        if (state.status) roomState.status = state.status;
+        board = state.board ? deepClone(state.board) : board;
+        currentPlayer = state.currentPlayer !== undefined ? state.currentPlayer : currentPlayer;
+        firstPlayer = state.firstPlayer !== undefined ? state.firstPlayer : firstPlayer;
+        gameOver = !!state.gameOver;
+        winner = state.winner !== undefined ? state.winner : winner;
+        captured = state.captured ? { 1: state.captured[1] ? state.captured[1].slice() : [], 2: state.captured[2] ? state.captured[2].slice() : [] } : captured;
+        check = state.check ? { 1: !!state.check[1], 2: !!state.check[2] } : computeCheck();
+        lastMove = state.lastMove || lastMove;
+        selected = null; legalDests = [];
+        updateAll();
+        if (gameOver) showOnlineEnd();
+        else closeModal();
+      }
+
+      function computeCheck() {
+        return { 1: isInCheck(board, 1), 2: isInCheck(board, 2) };
+      }
+
+      function resetLocal() {
+        board = initialBoard();
+        firstPlayer = firstPlayer === 1 ? 2 : 1;
+        currentPlayer = firstPlayer;
+        gameOver = false;
+        winner = null;
+        captured = { 1: [], 2: [] };
+        check = { 1: false, 2: false };
+        lastMove = null;
+        selected = null;
+        legalDests = [];
+      }
+
+      function resetGame() {
+        closeModal();
+        if (mode === 'online') socket.emit('game:reset');
+        else { resetLocal(); updateAll(); if (mode === 'ai' && currentPlayer === 2) setTimeout(aiMove, 400); }
+      }
+
+      function rematchGame() {
+        closeModal();
+        if (mode === 'online') socket.emit('rematch');
+        else resetGame();
+      }
+
+      function leaveGame() {
+        socket.emit('leaveRoom');
+        location.href = '/games/minichess.html';
+      }
+
+      function copyLink() {
+        if (!roomId) return;
+        copyToClipboard(`${location.origin}/games/minichess.html?room=${roomId}`, $('copy-btn'), '✅');
+      }
+
+      function updateAll() { drawBoard(); updateBadges(); updateInfo(); }
+
+      function updateBadges() {
+        const p1 = players.find(p => playerSymbol(p) === 1);
+        const p2 = players.find(p => playerSymbol(p) === 2);
+        let n1, n2;
+        if (mode === 'ai') { n1 = '你'; n2 = 'AI'; }
+        else if (mode === 'local') { n1 = '玩家白'; n2 = '玩家黑'; }
+        else { n1 = p1 ? p1.name : '等待...'; n2 = p2 ? p2.name : '等待...'; }
+        if (mode === 'online' && myPlayer !== null) {
+          if (myPlayer === 1) n1 += ' (你)';
+          if (myPlayer === 2) n2 += ' (你)';
+        }
+        $('name-p1').textContent = n1;
+        $('name-p2').textContent = n2;
+        $('badge-p1').classList.toggle('active', currentPlayer === 1 && !gameOver && (mode !== 'online' || roomState.status === 'playing'));
+        $('badge-p2').classList.toggle('active', currentPlayer === 2 && !gameOver && (mode !== 'online' || roomState.status === 'playing'));
+      }
+
+      function renderCaptured(arr) {
+        return arr && arr.length ? arr.map(p => PIECE[p] || p).join(' ') : '';
+      }
+
+      function updateInfo() {
+        $('cap-p1').textContent = renderCaptured(captured[1]);
+        $('cap-p2').textContent = renderCaptured(captured[2]);
+        const turnEl = $('turn-text');
+        if (gameOver) turnEl.textContent = '游戏结束';
+        else if (mode === 'ai') turnEl.textContent = currentPlayer === 1 ? '你的回合 (白)' : 'AI 思考中...';
+        else if (mode === 'local') turnEl.textContent = currentPlayer === 1 ? '白方回合' : '黑方回合';
+        else if (roomState.status === 'waiting') turnEl.textContent = '等待对手加入...';
+        else if (myPlayer === null) turnEl.textContent = '观战中';
+        else if (myPlayer === currentPlayer) turnEl.textContent = '你的回合';
+        else turnEl.textContent = '对手回合...';
+
+        const inCheck = check[currentPlayer];
+        $('check-text').classList.toggle('hidden', !inCheck || gameOver);
+        $('last-move').textContent = lastMove ? `最后一步：${coord(lastMove.from)} → ${coord(lastMove.to)}` : '最后一步：-';
+      }
+
+      function coord(pos) { return FILES[pos.c] + (ROWS - pos.r); }
+
+      function drawBoard() {
+        const el = $('chess-board');
+        el.innerHTML = '';
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const p = board[r][c];
+            const sq = document.createElement('div');
+            const isLight = (r + c) % 2 === 0;
+            sq.className = 'square ' + (isLight ? 'light' : 'dark');
+            if (selected && selected.r === r && selected.c === c) sq.classList.add('selected');
+            if (lastMove && ((lastMove.from.r === r && lastMove.from.c === c) || (lastMove.to.r === r && lastMove.to.c === c))) sq.classList.add('last-move');
+            const dest = legalDests.find(d => d.r === r && d.c === c);
+            if (dest) { sq.classList.add('legal'); if (p) sq.classList.add('capture'); }
+            if (p && ((p === 'K' && check[1]) || (p === 'k' && check[2]))) sq.classList.add('check');
+
+            if (p) {
+              const span = document.createElement('span');
+              span.className = 'piece';
+              span.textContent = PIECE[p] || p;
+              sq.appendChild(span);
+            }
+            const crd = document.createElement('span');
+            crd.className = 'coord';
+            crd.textContent = coord({ r, c });
+            sq.appendChild(crd);
+
+            sq.addEventListener('click', () => handleSquareClick(r, c));
+            el.appendChild(sq);
+          }
+        }
+      }
+
+      function canInteract() {
+        if (gameOver) return false;
+        if (mode === 'online') {
+          if (roomState.status !== 'playing') return false;
+          if (myPlayer === null) return false;
+          if (myPlayer !== currentPlayer) return false;
+        }
+        if (mode === 'ai' && currentPlayer !== 1) return false;
+        return true;
+      }
+
+      function handleSquareClick(r, c) {
+        if (!canInteract()) { selected = null; legalDests = []; drawBoard(); return; }
+        const p = board[r][c];
+        if (selected) {
+          const dest = legalDests.find(d => d.r === r && d.c === c);
+          if (dest) {
+            const move = { from: selected, to: { r, c }, promotion: dest.promotion };
+            selected = null; legalDests = [];
+            if (mode === 'online') socket.emit('game:move', move);
+            else makeLocalMove(move);
+            return;
+          }
+        }
+        if (p && isOwn(p, currentPlayer)) {
+          selected = { r, c };
+          legalDests = computeLegalDests(r, c, currentPlayer);
+          drawBoard();
+        } else {
+          selected = null;
+          legalDests = [];
+          drawBoard();
+        }
+      }
+
+      function computeLegalDests(r, c, player) {
+        return generateLegalMoves(board, player)
+          .filter(m => m.from.r === r && m.from.c === c)
+          .map(m => ({ r: m.to.r, c: m.to.c, promotion: m.promotion }));
+      }
+
+      function makeLocalMove(move) {
+        if (gameOver) return;
+        const target = board[move.to.r][move.to.c];
+        board = applyMove(board, move);
+        if (target) {
+          const mover = currentPlayer;
+          captured[mover].push(target);
+          playSound('hit');
+        } else {
+          playSound('place');
+        }
+        lastMove = move;
+        currentPlayer = opponent(currentPlayer);
+        check = computeCheck();
+        updateAll();
+
+        if (!hasLegalMoves(board, currentPlayer)) {
+          gameOver = true;
+          winner = isInCheck(board, currentPlayer) ? opponent(currentPlayer) : null;
+          updateAll();
+          showLocalEnd();
+        } else {
+          if (mode === 'ai' && currentPlayer === 2) setTimeout(aiMove, 400);
+        }
+      }
+
+      function showLocalEnd() {
+        let text;
+        if (mode === 'ai') {
+          if (winner === 1) { text = '你赢了！'; playSound('win'); }
+          else if (winner === 2) { text = 'AI 赢了'; playSound('lose'); }
+          else { text = '平局'; }
+        } else {
+          if (winner === 1) { text = '白方胜利！'; playSound('win'); }
+          else if (winner === 2) { text = '黑方胜利！'; playSound('win'); }
+          else { text = '平局'; }
+        }
+        showEnd(text);
+      }
+
+      function showOnlineEnd() {
+        let text;
+        if (winner === null) text = '平局';
+        else if (myPlayer === null) text = winner === 1 ? '白方胜利' : '黑方胜利';
+        else if (winner === myPlayer) { text = '你赢了！'; playSound('win'); }
+        else { text = '你输了...'; playSound('lose'); }
+        showEnd(text);
+      }
+
+      function showEnd(text) { $('end-title').textContent = text; $('end-modal').classList.remove('hidden'); }
+      function closeModal() { $('end-modal').classList.add('hidden'); }
+
+      window.addEventListener('DOMContentLoaded', () => {
+        const name = getDefaultName ? getDefaultName() : '';
+        if (name) $('player-name').value = name;
+        const room = new URLSearchParams(location.search).get('room');
+        if (room) {
+          $('room-id').value = room;
+          $('online-panel').classList.remove('hidden');
+          $('join-form').classList.remove('hidden');
+          joinRoom();
+        }
+      });
+
+      window.startMode = startMode;
+      window.showJoin = showJoin;
+      window.createRoom = createRoom;
+      window.quickMatch = quickMatch;
+      window.joinRoom = joinRoom;
+      window.resetGame = resetGame;
+      window.rematchGame = rematchGame;
+      window.leaveGame = leaveGame;
+      window.copyLink = copyLink;
+      window.closeModal = closeModal;
+    })();
+  </script>
+</body>
+</html>

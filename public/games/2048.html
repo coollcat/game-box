@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>2048 - AI 游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>🔢 2048</h1>
+      <div class="settings-row">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <span>得分: <b id="score">0</b></span>
+      <span style="margin-left:16px;">最高分: <b id="best">0</b></span>
+    </div>
+
+    <div class="game2048-board" id="board"></div>
+
+    <div class="controls">
+      <button class="btn btn-primary" onclick="newGame()">🔄 新游戏</button>
+      <button class="btn btn-ghost" onclick="location.href='/'">🏠 首页</button>
+    </div>
+    <p class="pong-hint">上下左右滑动或按方向键移动方块</p>
+  </div>
+
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">游戏结束</h2>
+      <p id="end-subtitle">-</p>
+      <button class="btn btn-primary" onclick="newGame()">再来一局</button>
+    </div>
+  </div>
+
+  <script src="/sounds.js"></script>
+  <script src="/auth.js"></script>
+  <script src="/games/2048.js"></script>
+</body>
+</html>

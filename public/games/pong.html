@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>乒乓对决 - AI 游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Compact header/status area to give canvas more vertical space */
+    .game-header {
+      padding: 4px 0 6px;
+      gap: 8px;
+    }
+    .game-header h1 {
+      font-size: 1.1rem;
+    }
+    .game-header .settings-row .sound-toggle {
+      font-size: 0.7rem;
+      gap: 4px;
+    }
+
+    .status-bar {
+      padding: 6px 10px;
+      margin-bottom: 6px;
+      font-size: 0.8rem;
+    }
+    .status-bar .room-info-bar,
+    .status-bar .player-badges,
+    .status-bar .score-board {
+      margin-bottom: 4px;
+      gap: 6px;
+    }
+    .status-bar .badge {
+      padding: 4px 8px;
+      font-size: 0.75rem;
+    }
+    .status-bar .score-board {
+      font-size: 0.95rem;
+    }
+
+    #pong-canvas {
+      height: min(calc(100dvh - 170px), 82vh);
+      max-height: calc(100dvh - 150px);
+    }
+    .pong-hint {
+      margin-top: 4px;
+      font-size: 0.75rem;
+    }
+    .controls {
+      margin-top: 8px;
+    }
+
+    /* Draggable chat FAB */
+    .chat-fab {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 60;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      user-select: none;
+      touch-action: none;
+    }
+    .chat-fab.dragging .chat-fab-btn,
+    .chat-fab.dragging .chat-panel {
+      transition: none !important;
+    }
+    .chat-fab-btn {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, #4d96ff, #3672d9);
+      color: #fff;
+      font-size: 1.4rem;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s, box-shadow 0.15s;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .chat-fab-btn:active {
+      transform: scale(0.92);
+    }
+    .chat-panel {
+      position: absolute;
+      bottom: 62px;
+      right: 0;
+      width: min(78vw, 320px);
+      max-height: min(55vh, 420px);
+      background: rgba(20,20,35,0.98);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+      transform-origin: bottom right;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      overflow: hidden;
+    }
+    .chat-panel.hidden {
+      transform: scale(0.1);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .chat-panel .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      color: #aaa;
+      margin-bottom: 6px;
+      cursor: grab;
+    }
+    .chat-panel .chat-header:active {
+      cursor: grabbing;
+    }
+    .chat-close {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 4px 10px;
+      color: #fff;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .chat-panel .chat-messages {
+      flex: 1;
+      min-height: 120px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding: 6px;
+      font-size: 0.85rem;
+    }
+    .chat-panel .chat-input-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .chat-panel .chat-input-row input {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    .chat-panel .sticker-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .chat-panel .sticker-row button {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 1.1rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>🏓 乒乓对决</h1>
+      <div class="settings-row">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </div>
+
+    <div id="lobby" class="screen active">
+      <div class="card">
+        <div class="form-group">
+          <label>你的名字</label>
+          <input type="text" id="player-name" placeholder="Player" maxlength="16">
+        </div>
+        <div class="mode-list">
+          <button class="btn btn-primary" onclick="startMode('local')">👥 同屏双人对战</button>
+          <button class="btn btn-secondary" onclick="startMode('online')">🌐 在线实时对战</button>
+        </div>
+      </div>
+
+      <div id="online-panel" class="card" style="margin-top:14px;">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="sound-toggle" title="公开房间会显示在首页房间列表，私有房间只能通过房间号加入"><input type="checkbox" id="room-public-check" checked> 公开房间（可被搜索）</label>
+        <div id="room-privacy-hint" class="privacy-hint"></div>
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">➕ 创建房间</button>
+        <button class="btn btn-secondary" onclick="showJoin()">🔗 加入房间</button>
+        <button class="btn btn-warning" onclick="quickMatch()">⚡ 快速匹配</button>
+        <div id="join-form" class="hidden" style="margin-top:12px;">
+          <div class="form-group">
+            <label>房间号</label>
+            <input type="text" id="room-id" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;">
+          </div>
+          <button class="btn btn-primary" onclick="joinRoom()">进入房间</button>
+        </div>
+        <div id="error-msg" class="status-bar hidden" style="background:rgba(255,77,77,.15);color:#ff6b6b;"></div>
+      </div>
+    </div>
+
+    <div id="game" class="screen">
+      <div class="status-bar">
+        <div class="room-info-bar">
+          <span>房间:</span>
+          <span id="room-display" class="room-id">-</span>
+          <button class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:.8rem;" id="copy-btn" onclick="copyLink()">📋 复制</button>
+        </div>
+        <div class="score-board">
+          <span id="score-1">0</span> : <span id="score-2">0</span>
+        </div>
+        <div class="player-badges">
+          <span id="badge-p1" class="badge">上方 <b id="name-p1">-</b></span>
+          <span id="badge-p2" class="badge">下方 <b id="name-p2">-</b></span>
+        </div>
+        <div id="status-text">等待开始...</div>
+      </div>
+
+      <canvas id="pong-canvas" width="400" height="800"></canvas>
+      <p class="pong-hint" id="hint-text">左右滑动控制你的球拍</p>
+
+      <div class="controls">
+        <button class="btn btn-warning" id="reset-btn" onclick="resetGame()">🔄 重置</button>
+        <button class="btn btn-danger" onclick="leaveGame()">🚪 离开</button>
+      </div>
+
+      <!-- Chat FAB -->
+      <div class="chat-fab" id="chat-fab">
+        <div class="chat-panel hidden" id="chat-panel">
+          <div class="chat-header" id="chat-header">
+            <span>💬 聊天</span>
+            <button class="chat-close" id="chat-close">✕</button>
+          </div>
+          <div class="chat-messages" id="chat-messages"></div>
+          <div class="chat-input-row">
+            <input type="text" id="chat-input" placeholder="说点什么..." maxlength="60" inputmode="text">
+            <button class="btn btn-ghost" style="width:auto;padding:8px 12px;" onclick="sendChat()">发送</button>
+          </div>
+          <div class="sticker-row">
+            <button onclick="sendSticker('👍')">👍</button>
+            <button onclick="sendSticker('😂')">😂</button>
+            <button onclick="sendSticker('😭')">😭</button>
+            <button onclick="sendSticker('🔥')">🔥</button>
+            <button onclick="sendSticker('💀')">💀</button>
+            <button onclick="sendSticker('🎉')">🎉</button>
+          </div>
+        </div>
+        <button class="chat-fab-btn" id="chat-fab-btn" aria-label="聊天">💬</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">游戏结束</h2>
+      <p id="end-subtitle">-</p>
+      <button class="btn btn-primary" onclick="rematchGame()">再来一局</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/sounds.js"></script>
+  <script src="/auth.js"></script>
+  <script src="/games/pong.js"></script>
+</body>
+</html>

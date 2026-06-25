@@ -1,0 +1,341 @@
+/* ===== Light theme overrides for index.html only ===== */
+
+body {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+  color: #1f2937;
+}
+
+.container {
+  padding: 16px;
+}
+
+/* ===== Header ===== */
+.hero {
+  padding: 18px 0 14px;
+}
+
+.hero h1 {
+  background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero p {
+  color: #64748b;
+}
+
+.brand-text h1 {
+  color: #1e293b;
+}
+
+.brand-text p {
+  color: #64748b;
+}
+
+/* ===== Category tabs ===== */
+.category-tabs {
+  padding: 8px 0 18px;
+}
+
+.category-tabs .tab {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.category-tabs .tab.active {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* ===== Game Grid ===== */
+.game-grid {
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.game-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+  border-radius: 18px;
+  padding: 20px;
+}
+
+.game-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.1);
+}
+
+.game-card h2 {
+  color: #1e293b;
+}
+
+.game-card p {
+  color: #64748b;
+}
+
+.tag {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+/* ===== Footer ===== */
+.home-footer {
+  color: #64748b;
+}
+
+.home-footer a {
+  color: #16a34a;
+}
+
+/* ===== Buttons (shared classes used by homepage modals) ===== */
+.btn {
+  color: #fff;
+}
+
+.btn-primary { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.btn-secondary { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.btn-warning { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
+.btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.btn-ghost {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+/* ===== Modal ===== */
+.modal {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.modal-content {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+  color: #1e293b;
+}
+
+.modal-content h2 {
+  color: #d97706;
+}
+
+.modal-content p {
+  color: #64748b;
+}
+
+.modal-content select,
+.modal-content input {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.qm-status {
+  color: #16a34a;
+}
+
+.modal-actions .btn.secondary {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+}
+
+/* ===== Forms ===== */
+.form-group label {
+  color: #475569;
+}
+
+.form-group input {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.form-group input:focus {
+  border-color: #22c55e;
+}
+
+/* ===== Auth Modal ===== */
+.auth-tab {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.auth-tab.active {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  border-color: transparent;
+}
+
+.auth-message {
+  color: #ef4444;
+}
+
+.random-result {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.random-result-hint {
+  color: #16a34a;
+}
+
+/* ===== Profile ===== */
+.profile-avatar {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.profile-name-row strong {
+  color: #1e293b;
+}
+
+.profile-account {
+  color: #64748b;
+}
+
+.rename-btn {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+.rename-form {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.profile-records h3 {
+  color: #d97706;
+}
+
+.record-item {
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.record-game {
+  color: #334155;
+}
+
+.record-score {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.record-empty {
+  color: #94a3b8;
+}
+
+/* ===== User dropdown ===== */
+.user-dropdown {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.12);
+}
+
+.dropdown-item {
+  color: #334155;
+}
+
+.dropdown-item:hover {
+  background: #f1f5f9;
+}
+
+.dropdown-danger {
+  color: #ef4444;
+}
+
+.login-btn {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+.user-name-btn {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+/* ===== Room List ===== */
+.room-list-fab {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.3);
+}
+
+.quick-match-fab {
+  background: linear-gradient(135deg, #f97316, #ef4444);
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.3);
+}
+
+.room-list-content {
+  color: #1e293b;
+}
+
+.room-list-subtitle {
+  color: #64748b;
+}
+
+.room-list {
+  gap: 10px;
+}
+
+.room-empty {
+  color: #94a3b8;
+}
+
+.room-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.room-info strong {
+  color: #d97706;
+}
+
+.room-info span,
+.room-meta {
+  color: #64748b;
+}
+
+.room-status.waiting {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.room-status.playing {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+}
+
+.room-quick-join input,
+.room-create-row input {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.toggle-inline {
+  color: #475569;
+}
+
+.section-label {
+  color: #64748b;
+}
+
+.room-section {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+/* ===== Responsive tweaks ===== */
+@media (max-width: 480px) {
+  .hero h1 { font-size: 1.7rem; }
+  .game-card { padding: 16px; }
+  .brand-text h1 { font-size: 1.35rem; }
+}

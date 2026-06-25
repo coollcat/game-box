@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>停车场出口 - 8方向环轨版</title>
+    <style>
+        :root {
+            --grid-cell-size: 55px;
+            --bg-main: #9cb1e6;
+            --color-red: #ff4d4d;
+            --color-blue: #00a8ff;
+            --color-green: #2ed573;
+            --color-yellow: #ffa502;
+            --color-purple: #9b59b6;
+            --color-pink: #ff6b81;
+            --color-orange: #ff7f50;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            background: #1a1a1f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #333;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 480px;
+            height: 100vh;
+            max-height: 850px;
+            background: var(--bg-main);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .home-link {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 200;
+            color: #fff;
+            text-decoration: none;
+            font-size: 13px;
+            background: rgba(0,0,0,0.2);
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px 12px 70px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            font-weight: bold;
+            font-size: 16px;
+            color: #fff;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+
+        .coin-box {
+            background: rgba(0,0,0,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        .top-zone {
+            padding: 10px 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.15);
+            position: relative;
+        }
+
+        .track-container {
+            width: 100%;
+            height: 110px;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 55px;
+            position: relative;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.15);
+            border: 3px solid rgba(255,255,255,0.4);
+            overflow: hidden;
+        }
+
+        .track-center {
+            position: absolute;
+            top: 25px; left: 65px;
+            right: 65px; bottom: 25px;
+            background: #9cb1e6;
+            border-radius: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border: 2px solid rgba(255,255,255,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 11px;
+            color: #4a5568;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .pending-pool {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            z-index: 15;
+            background: rgba(255,255,255,0.35);
+            border-radius: 14px;
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 48%;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .pending-label {
+            font-size: 10px;
+            color: #2d3748;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .pending-queue {
+            display: flex;
+            gap: 3px;
+            flex-wrap: nowrap;
+        }
+        .pending-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.6);
+            flex-shrink: 0;
+        }
+        .pending-more {
+            font-size: 10px;
+            color: #2d3748;
+            font-weight: bold;
+        }
+
+        .entrance-lane {
+            position: absolute;
+            left: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 48px;
+            height: 96px;
+            background: rgba(60, 70, 90, 0.55);
+            border-radius: 12px;
+            border: 2px dashed rgba(255,255,255,0.4);
+            z-index: 8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 2px;
+            padding: 4px 2px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .entrance-lane::before {
+            content: '入口';
+            position: absolute;
+            top: 5px;
+            font-size: 9px;
+            color: rgba(255,255,255,0.85);
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .entrance-person {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 11px;
+            flex-shrink: 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+            animation: walkUp 0.7s infinite alternate ease-in-out;
+        }
+        @keyframes walkUp {
+            from { transform: translateY(2px); }
+            to { transform: translateY(-2px); }
+        }
+
+        .track-passenger {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            position: absolute;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            transform: translate(-50%, -50%);
+            transition: left 0.03s linear, top 0.03s linear;
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+        .track-passenger::after {
+            content: '🧑';
+        }
+
+        .boarding-passenger {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 30;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.6);
+            pointer-events: none;
+            transition: left 0.5s ease-in-out, top 0.5s ease-in-out, opacity 0.5s ease;
+        }
+        .boarding-passenger::after {
+            content: '🧑';
+            font-size: 11px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .parking-slots {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .slot {
+            width: 60px;
+            height: 75px;
+            border: 2px dashed rgba(255,255,255,0.6);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.05);
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 11px;
+        }
+        .slot.locked {
+            background: rgba(0,0,0,0.15);
+            border-color: rgba(0,0,0,0.1);
+            cursor: pointer;
+            color: #fff;
+            text-align: center;
+            flex-direction: column;
+            line-height: 1.2;
+        }
+
+        .board-zone {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            position: relative;
+        }
+
+        .grid-board {
+            width: calc(6 * var(--grid-cell-size));
+            height: calc(6 * var(--grid-cell-size));
+            background: #cbd9f7;
+            border: 4px solid #fff;
+            border-radius: 12px;
+            position: relative;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .grid-bg-line {
+            position: absolute;
+            width: 100%; height: 100%;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            grid-template-rows: repeat(6, 1fr);
+            pointer-events: none;
+        }
+        .grid-cell-deco {
+            border: none;
+        }
+
+        .path-svg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 5;
+            display: none;
+        }
+        .path-line {
+            stroke: rgba(255,255,255,0.85);
+            stroke-width: 3;
+            stroke-dasharray: 6 4;
+            fill: none;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+        }
+        .path-dot {
+            fill: rgba(255,255,255,0.95);
+        }
+
+        .vehicle {
+            position: absolute;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid rgba(255,255,255,0.4);
+            transform-origin: center center;
+            transition: top 0.2s cubic-bezier(0.25, 1, 0.5, 1), left 0.2s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s ease, transform 0.1s ease;
+        }
+        .vehicle.blocked {
+            opacity: 0.55;
+            filter: grayscale(0.25);
+        }
+        .vehicle.selected {
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.8), 0 4px 6px rgba(0,0,0,0.2);
+        }
+
+        .vehicle-ui {
+            color: white;
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .vehicle-ui .arrow {
+            font-size: 18px;
+            line-height: 1;
+        }
+        .vehicle-ui .capacity {
+            font-size: 10px;
+            background: rgba(0,0,0,0.25);
+            padding: 1px 4px;
+            border-radius: 6px;
+            margin-top: 2px;
+        }
+
+        .dock-zone {
+            height: 84px;
+            background: #3a4454;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0 6px;
+            border-top: 3px solid rgba(0,0,0,0.1);
+        }
+
+        .btn-prop {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            color: #fff;
+            font-size: 10px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            position: relative;
+            transition: opacity 0.2s;
+        }
+        .btn-prop:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .btn-prop .icon {
+            width: 42px;
+            height: 42px;
+            background: #fff;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        .btn-prop .count-badge {
+            position: absolute;
+            top: -2px;
+            right: 4px;
+            background: #ff4d4d;
+            color: #fff;
+            border-radius: 8px;
+            font-size: 9px;
+            padding: 1px 4px;
+            font-weight: bold;
+            min-width: 16px;
+        }
+
+        .bg-red { background-color: var(--color-red); }
+        .bg-blue { background-color: var(--color-blue); }
+        .bg-green { background-color: var(--color-green); }
+        .bg-yellow { background-color: var(--color-yellow); }
+        .bg-purple { background-color: var(--color-purple); }
+        .bg-pink { background-color: var(--color-pink); }
+        .bg-orange { background-color: var(--color-orange); }
+
+        .win-overlay, .shop-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+        .win-box, .shop-box {
+            background: #fff;
+            color: #333;
+            padding: 25px;
+            border-radius: 20px;
+            text-align: center;
+            width: 80%;
+        }
+        .btn-next, .shop-btn {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: var(--color-green);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+        }
+        .shop-btn.secondary {
+            background: var(--color-blue);
+        }
+        .shop-btn:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+        .shop-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        .shop-close {
+            margin-top: 12px;
+            background: #718096;
+        }
+    </style>
+</head>
+<body>
+
+<a href="/" class="home-link">← 返回</a>
+
+<div id="game-container">
+    <div class="header">
+        <span id="level-title">第 1 关</span>
+        <div id="remain-count">等车旅客: 0</div>
+        <div class="coin-box">🪙 <span id="coin-count">120</span></div>
+    </div>
+
+    <div class="top-zone">
+        <div class="track-container" id="track-container">
+            <div class="entrance-lane" id="entrance-lane"></div>
+            <div class="track-center">
+                🚌 环形候车区<br>
+                <span id="live-info" style="font-size:10px; color:#718096">有车位即可上车</span>
+            </div>
+        </div>
+
+        <div class="pending-pool" id="pending-pool">
+            <span class="pending-label">⏳待上车</span>
+            <div class="pending-queue" id="pending-queue"></div>
+            <span class="pending-more" id="pending-more"></span>
+        </div>
+
+        <div class="parking-slots" id="parking-slots"></div>
+    </div>
+
+    <div class="board-zone">
+        <div class="grid-board" id="grid-board">
+            <div class="grid-bg-line" id="grid-bg-line"></div>
+            <svg class="path-svg" id="path-svg">
+                <line id="path-line" class="path-line" x1="0" y1="0" x2="0" y2="0"/>
+                <circle id="path-dot" class="path-dot" cx="0" cy="0" r="5"/>
+            </svg>
+        </div>
+    </div>
+
+    <div class="dock-zone">
+        <button class="btn-prop" id="btn-shuffle" onclick="useProp('shuffle')">
+            <div class="icon">🔄</div>
+            <span>刷新</span>
+            <span class="count-badge" id="count-shuffle">3</span>
+        </button>
+        <button class="btn-prop" id="btn-remove" onclick="useProp('remove')">
+            <div class="icon">🔨</div>
+            <span>硬消</span>
+            <span class="count-badge" id="count-remove">3</span>
+        </button>
+        <button class="btn-prop" id="btn-magnet" onclick="useProp('magnet')">
+            <div class="icon">🧲</div>
+            <span>磁铁</span>
+            <span class="count-badge" id="count-magnet">3</span>
+        </button>
+        <button class="btn-prop" id="btn-undo" onclick="useProp('undo')">
+            <div class="icon">↩️</div>
+            <span>撤销</span>
+            <span class="count-badge" id="count-undo">3</span>
+        </button>
+        <button class="btn-prop" id="btn-shop" onclick="openShop()">
+            <div class="icon">🛒</div>
+            <span>商店</span>
+        </button>
+    </div>
+
+    <div class="win-overlay" id="win-overlay">
+        <div class="win-box">
+            <h2 style="color: var(--color-yellow); margin-bottom: 8px;">🌟 顺利通关 🌟</h2>
+            <p>成功清空候车区！金币 +50</p>
+            <button class="btn-next" onclick="loadNextLevel()">下一关</button>
+        </div>
+    </div>
+
+    <div class="shop-overlay" id="shop-overlay">
+        <div class="shop-box">
+            <h2 style="color: var(--color-green); margin-bottom: 10px;">🛒 道具商店</h2>
+            <div class="shop-row">
+                <span>解锁一个车位</span>
+                <button class="shop-btn secondary" id="shop-slot" onclick="buySlot()">50 金币</button>
+            </div>
+            <div class="shop-row">
+                <span>道具补给包（各+1）</span>
+                <button class="shop-btn secondary" id="shop-props" onclick="buyPropPack()">30 金币</button>
+            </div>
+            <p style="font-size:12px;color:#718096;margin-top:8px;">当前金币：<span id="shop-coins">0</span></p>
+            <button class="shop-btn shop-close" onclick="closeShop()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const COLORS = ['red','blue','green','yellow','purple','pink','orange'];
+
+    const ARROWS = {
+        'up': '↑', 'up-right': '↗', 'right': '→', 'down-right': '↘',
+        'down': '↓', 'down-left': '↙', 'left': '←', 'up-left': '↖'
+    };
+
+    const LEVELS = [
+        {
+            level: 1,
+            passengers: ["red", "red", "red", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "red", "red", "red", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "red", "red", "red", "red"],
+            vehicles: [
+                { id: 1, color: 'red', dir: 'down-right', row: 2, col: 1, size: 3 },
+                { id: 2, color: 'blue', dir: 'up-right', row: 4, col: 2, size: 3 },
+                { id: 3, color: 'green', dir: 'right', row: 0, col: 0, size: 2 },
+                { id: 4, color: 'red', dir: 'right', row: 5, col: 0, size: 3 },
+                { id: 5, color: 'blue', dir: 'up-right', row: 4, col: 0, size: 2 },
+                { id: 6, color: 'green', dir: 'up', row: 4, col: 5, size: 2 },
+                { id: 7, color: 'red', dir: 'up-left', row: 1, col: 4, size: 2 }
+            ]
+        },
+        {
+            level: 2,
+            passengers: ["red", "red", "red", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "blue", "blue", "blue"],
+            vehicles: [
+                { id: 1, color: 'red', dir: 'down-left', row: 2, col: 2, size: 3 },
+                { id: 2, color: 'blue', dir: 'down', row: 0, col: 3, size: 2 },
+                { id: 3, color: 'green', dir: 'up-left', row: 2, col: 3, size: 2 },
+                { id: 4, color: 'red', dir: 'right', row: 0, col: 4, size: 2 },
+                { id: 5, color: 'blue', dir: 'up-right', row: 1, col: 1, size: 2 },
+                { id: 6, color: 'green', dir: 'down', row: 0, col: 0, size: 2 },
+                { id: 7, color: 'red', dir: 'up', row: 4, col: 4, size: 2 },
+                { id: 8, color: 'blue', dir: 'down', row: 1, col: 5, size: 3 }
+            ]
+        },
+        {
+            level: 3,
+            passengers: ["red", "red", "red", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "green", "green", "green", "yellow", "yellow", "yellow", "yellow", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "green", "green", "green", "yellow", "yellow", "yellow", "yellow", "red", "red", "red", "red"],
+            vehicles: [
+                { id: 1, color: 'red', dir: 'down', row: 1, col: 2, size: 3 },
+                { id: 2, color: 'blue', dir: 'right', row: 1, col: 3, size: 3 },
+                { id: 3, color: 'green', dir: 'up-left', row: 5, col: 3, size: 3 },
+                { id: 4, color: 'yellow', dir: 'left', row: 4, col: 5, size: 2 },
+                { id: 5, color: 'red', dir: 'left', row: 2, col: 1, size: 2 },
+                { id: 6, color: 'blue', dir: 'right', row: 2, col: 4, size: 2 },
+                { id: 7, color: 'green', dir: 'left', row: 3, col: 5, size: 3 },
+                { id: 8, color: 'yellow', dir: 'left', row: 0, col: 1, size: 2 },
+                { id: 9, color: 'red', dir: 'left', row: 5, col: 2, size: 2 }
+            ]
+        },
+        {
+            level: 4,
+            passengers: ["red", "red", "red", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "yellow", "yellow", "yellow", "yellow", "yellow", "yellow", "yellow", "purple", "purple", "purple", "purple", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "yellow", "yellow", "yellow", "yellow", "purple", "purple", "purple", "purple"],
+            vehicles: [
+                { id: 1, color: 'red', dir: 'down', row: 3, col: 0, size: 3 },
+                { id: 2, color: 'blue', dir: 'up-left', row: 1, col: 5, size: 2 },
+                { id: 3, color: 'green', dir: 'up', row: 3, col: 2, size: 2 },
+                { id: 4, color: 'yellow', dir: 'right', row: 4, col: 3, size: 3 },
+                { id: 5, color: 'purple', dir: 'down-right', row: 1, col: 4, size: 2 },
+                { id: 6, color: 'red', dir: 'right', row: 5, col: 3, size: 2 },
+                { id: 7, color: 'blue', dir: 'down-right', row: 2, col: 4, size: 2 },
+                { id: 8, color: 'green', dir: 'left', row: 0, col: 2, size: 2 },
+                { id: 9, color: 'yellow', dir: 'up', row: 1, col: 3, size: 2 },
+                { id: 10, color: 'purple', dir: 'up-left', row: 3, col: 1, size: 2 }
+            ]
+        },
+        {
+            level: 5,
+            passengers: ["red", "red", "red", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "yellow", "yellow", "yellow", "yellow", "purple", "purple", "purple", "purple", "purple", "purple", "purple", "pink", "pink", "pink", "pink", "pink", "pink", "pink", "red", "red", "red", "red", "red", "red", "red", "blue", "blue", "blue", "blue", "green", "green", "green", "green", "yellow", "yellow", "yellow", "yellow", "purple", "purple", "purple", "purple", "purple", "purple", "purple"],
+            vehicles: [
+                { id: 1, color: 'red', dir: 'down', row: 0, col: 0, size: 3 },
+                { id: 2, color: 'blue', dir: 'down-right', row: 0, col: 1, size: 3 },
+                { id: 3, color: 'green', dir: 'up-left', row: 5, col: 4, size: 2 },
+                { id: 4, color: 'yellow', dir: 'up', row: 1, col: 3, size: 2 },
+                { id: 5, color: 'purple', dir: 'down', row: 3, col: 5, size: 3 },
+                { id: 6, color: 'pink', dir: 'down', row: 3, col: 2, size: 3 },
+                { id: 7, color: 'red', dir: 'up-left', row: 3, col: 3, size: 3 },
+                { id: 8, color: 'blue', dir: 'up-left', row: 2, col: 5, size: 2 },
+                { id: 9, color: 'green', dir: 'up', row: 5, col: 0, size: 2 },
+                { id: 10, color: 'yellow', dir: 'down-left', row: 4, col: 4, size: 2 },
+                { id: 11, color: 'purple', dir: 'down', row: 3, col: 1, size: 3 }
+            ]
+        }
+    ];
+
+    const DIR_DATA = {
+        'up':         { dr: -1, dc:  0, angle: 0 },
+        'up-right':   { dr: -1, dc:  1, angle: 45 },
+        'right':      { dr:  0, dc:  1, angle: 90 },
+        'down-right': { dr:  1, dc:  1, angle: 135 },
+        'down':       { dr:  1, dc:  0, angle: 180 },
+        'down-left':  { dr:  1, dc: -1, angle: 225 },
+        'left':       { dr:  0, dc: -1, angle: 270 },
+        'up-left':    { dr: -1, dc: -1, angle: 315 }
+    };
+
+    const STORAGE_KEY = 'parkingExitSave_v2';
+    const GRID_SIZE = 6;
+    const CELL_PX = 55;
+    const TRACK_CAPACITY = 14;
+    const MAX_SLOTS = 5;
+
+    let currentLevelIdx = 0;
+    let coins = 120;
+    let maxSlots = 2;
+    let trackPassengers = [];
+    let pendingPassengers = [];
+    let vehicles = [];
+    let parkedSlots = [null, null, null, null, null];
+    let grid = [];
+    let animationFrameId = null;
+    let pendingTimerId = null;
+    let undoStack = [];
+    let propCounts = { shuffle: 3, remove: 3, magnet: 3, undo: 3 };
+    let passengerIdSeq = 0;
+    let isBusy = false;
+
+    function loadSave() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+                const data = JSON.parse(raw);
+                if (typeof data.coins === 'number') coins = data.coins;
+                if (typeof data.level === 'number') currentLevelIdx = data.level;
+                if (typeof data.maxSlots === 'number') maxSlots = Math.min(MAX_SLOTS, Math.max(2, data.maxSlots));
+                if (data.propCounts && typeof data.propCounts === 'object') {
+                    for (const k in propCounts) {
+                        if (typeof data.propCounts[k] === 'number') propCounts[k] = data.propCounts[k];
+                    }
+                }
+            }
+        } catch (e) { console.warn('读档失败', e); }
+    }
+
+    function saveGame() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                coins: coins,
+                level: currentLevelIdx,
+                maxSlots: maxSlots,
+                propCounts: propCounts
+            }));
+        } catch (e) { console.warn('存档失败', e); }
+    }
+
+    function init() {
+        loadSave();
+        const bgLine = document.getElementById('grid-bg-line');
+        bgLine.innerHTML = '';
+        for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'grid-cell-deco';
+            bgLine.appendChild(cell);
+        }
+        loadLevel(currentLevelIdx);
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        updateTrackPhysics();
+        if (pendingTimerId) clearInterval(pendingTimerId);
+        pendingTimerId = setInterval(refillTrackFromPending, 600);
+        renderProps();
+    }
+
+    function generateLevel(levelNum) {
+        const colorCount = Math.min(COLORS.length, 3 + Math.floor((levelNum - LEVELS.length) / 2));
+        let vehicleCount = Math.min(12, 7 + Math.floor((levelNum - LEVELS.length) / 2));
+        const sizesPool = [2,2,2,3,3];
+        const avgSize = sizesPool.reduce((a, b) => a + b, 0) / sizesPool.length;
+        const maxVehiclesByCells = Math.floor(GRID_SIZE * GRID_SIZE * 0.85 / avgSize);
+        vehicleCount = Math.min(vehicleCount, maxVehiclesByCells);
+        const usedColors = COLORS.slice(0, colorCount);
+        const generatedVehicles = [];
+        let id = 1;
+        for (let i = 0; i < vehicleCount; i++) {
+            const color = usedColors[i % usedColors.length];
+            const size = sizesPool[Math.floor(Math.random() * sizesPool.length)];
+            const capacity = size === 2 ? 4 : 7;
+            generatedVehicles.push({ id: id++, color, size, capacity });
+        }
+        const passengers = [];
+        generatedVehicles.forEach(v => {
+            for (let i = 0; i < v.capacity; i++) passengers.push(v.color);
+        });
+        return { level: levelNum, passengers, vehicles: placeVehiclesRandomly(generatedVehicles) };
+    }
+
+    function placeVehiclesRandomly(vList) {
+        let best = null;
+        for (let attempt = 0; attempt < 300; attempt++) {
+            const placed = [];
+            let ok = true;
+            for (const v of vList) {
+                const dirs = Object.keys(DIR_DATA);
+                let placedOne = false;
+                for (let inner = 0; inner < 500; inner++) {
+                    const dir = dirs[Math.floor(Math.random() * dirs.length)];
+                    const { dr, dc } = DIR_DATA[dir];
+                    const maxRow = GRID_SIZE - 1 - Math.max(0, (v.size - 1) * dr);
+                    const minRow = Math.max(0, -(v.size - 1) * dr);
+                    const maxCol = GRID_SIZE - 1 - Math.max(0, (v.size - 1) * dc);
+                    const minCol = Math.max(0, -(v.size - 1) * dc);
+                    if (minRow > maxRow || minCol > maxCol) continue;
+                    const row = Math.floor(Math.random() * (maxRow - minRow + 1)) + minRow;
+                    const col = Math.floor(Math.random() * (maxCol - minCol + 1)) + minCol;
+                    const cells = [];
+                    let inBounds = true;
+                    for (let i = 0; i < v.size; i++) {
+                        const r = row + i * dr, c = col + i * dc;
+                        if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) { inBounds = false; break; }
+                        cells.push({ r, c });
+                    }
+                    if (!inBounds) continue;
+                    if (cells.some(cell => placed.some(p => p.cells.some(pc => pc.r === cell.r && pc.c === cell.c)))) continue;
+                    placed.push({ ...v, dir, row, col, cells });
+                    placedOne = true;
+                    break;
+                }
+                if (!placedOne) { ok = false; break; }
+            }
+            if (ok && validatePlacement(placed)) {
+                const simple = placed.map(p => ({ id: p.id, color: p.color, dir: p.dir, row: p.row, col: p.col, size: p.size }));
+                grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(0));
+                placed.forEach(p => p.cells.forEach(c => grid[c.r][c.c] = p.id));
+                const canMoveCount = simple.filter(v => canVehicleMove(v)).length;
+                if (!best || canMoveCount > best.canMove) best = { list: simple, canMove: canMoveCount };
+                if (canMoveCount > 0) return simple;
+            }
+        }
+        if (best && validatePlacement(best.list)) return best.list;
+        return placeVehiclesFallback(vList);
+    }
+
+    function placeVehiclesFallback(vList) {
+        const placed = [];
+        const occupied = new Set();
+        const dirs = Object.keys(DIR_DATA);
+        for (const v of vList) {
+            let placedOne = false;
+            for (let r = 0; r < GRID_SIZE && !placedOne; r++) {
+                for (let c = 0; c < GRID_SIZE && !placedOne; c++) {
+                    for (const dir of dirs) {
+                        const { dr, dc } = DIR_DATA[dir];
+                        const cells = [];
+                        let inBounds = true;
+                        for (let i = 0; i < v.size; i++) {
+                            const rr = r + i * dr, cc = c + i * dc;
+                            if (rr < 0 || rr >= GRID_SIZE || cc < 0 || cc >= GRID_SIZE) { inBounds = false; break; }
+                            cells.push(`${rr},${cc}`);
+                        }
+                        if (!inBounds) continue;
+                        if (cells.some(key => occupied.has(key))) continue;
+                        cells.forEach(key => occupied.add(key));
+                        placed.push({ id: v.id, color: v.color, dir, row: r, col: c, size: v.size });
+                        placedOne = true;
+                        break;
+                    }
+                }
+            }
+            // 无法放置时跳过该车，避免重叠
+        }
+        return placed;
+    }
+
+    function loadLevel(idx) {
+        const data = idx < LEVELS.length ? LEVELS[idx] : generateLevel(idx + 1);
+        document.getElementById('level-title').innerText = `第 ${data.level} 关`;
+        document.getElementById('coin-count').innerText = coins;
+        document.getElementById('win-overlay').style.display = 'none';
+        document.getElementById('shop-overlay').style.display = 'none';
+
+        vehicles = data.vehicles.map(v => ({
+            ...v,
+            capacity: v.size === 2 ? 4 : 7,
+            boarded: 0,
+            status: 'board'
+        }));
+
+        parkedSlots = [null, null, null, null, null];
+        undoStack = [];
+        passengerIdSeq = 0;
+
+        // 根据车的总容量生成对应数量的人，颜色按车容量散开，保证有解
+        const colorCapacity = {};
+        vehicles.forEach(v => { colorCapacity[v.color] = (colorCapacity[v.color] || 0) + v.capacity; });
+        const allPassengers = [];
+        Object.entries(colorCapacity).forEach(([color, count]) => { for (let i = 0; i < count; i++) allPassengers.push(color); });
+        // 随机打乱，让颜色散开分布
+        for (let i = allPassengers.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allPassengers[i], allPassengers[j]] = [allPassengers[j], allPassengers[i]];
+        }
+        trackPassengers = allPassengers.slice(0, TRACK_CAPACITY).map((color, i) => ({
+            id: passengerIdSeq++,
+            color: color,
+            angle: Math.PI + (i * (Math.PI * 2 / Math.max(1, allPassengers.slice(0, TRACK_CAPACITY).length)))
+        }));
+        pendingPassengers = allPassengers.slice(TRACK_CAPACITY);
+
+        buildGridMap();
+        // 初始布局若仍有重叠则静默重排，彻底避免车辆重叠
+        if (!validatePlacement(vehicles.filter(v => v.status === 'board'))) {
+            autoReshuffle(true);
+        }
+        renderVehicles();
+        renderSlots();
+        renderPendingPool();
+        renderEntranceLane();
+        updatePassengerCountUI();
+        saveGame();
+    }
+
+    function updatePassengerCountUI() {
+        const total = trackPassengers.length + pendingPassengers.length;
+        document.getElementById('remain-count').innerText = `等车旅客: ${total}`;
+    }
+
+    function buildGridMap() {
+        grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(0));
+        vehicles.forEach(v => {
+            if (v.status !== 'board') return;
+            const { dr, dc } = DIR_DATA[v.dir];
+            for (let i = 0; i < v.size; i++) {
+                const r = v.row + i * dr;
+                const c = v.col + i * dc;
+                if (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE) grid[r][c] = v.id;
+            }
+        });
+    }
+
+    function validatePlacement(placed) {
+        const occupied = new Set();
+        for (const p of placed) {
+            const { dr, dc } = DIR_DATA[p.dir];
+            for (let i = 0; i < p.size; i++) {
+                const r = p.row + i * dr;
+                const c = p.col + i * dc;
+                if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) return false;
+                const key = `${r},${c}`;
+                if (occupied.has(key)) return false;
+                occupied.add(key);
+            }
+        }
+        return true;
+    }
+
+    function freeSlotIndex() {
+        return parkedSlots.findIndex((s, i) => s === null && i < maxSlots);
+    }
+
+    function getVehicleCells(v, step = 0) {
+        const { dr, dc } = DIR_DATA[v.dir];
+        const cells = [];
+        for (let i = 0; i < v.size; i++) {
+            cells.push({ r: v.row + i * dr + step * dr, c: v.col + i * dc + step * dc });
+        }
+        return cells;
+    }
+
+    function computeMove(v, allowExit) {
+        const { dr, dc } = DIR_DATA[v.dir];
+        let cells = getVehicleCells(v, 0);
+        let steps = 0;
+        let canExit = false;
+        while (true) {
+            // 整车已经离开网格边界 -> 可以出站
+            if (cells.every(cell => cell.r < 0 || cell.r >= GRID_SIZE || cell.c < 0 || cell.c >= GRID_SIZE)) {
+                canExit = allowExit;
+                break;
+            }
+            const nextCells = cells.map(cell => ({ r: cell.r + dr, c: cell.c + dc }));
+            let hitsObstacle = false;
+            for (const cell of nextCells) {
+                if (cell.r >= 0 && cell.r < GRID_SIZE && cell.c >= 0 && cell.c < GRID_SIZE) {
+                    if (grid[cell.r][cell.c] !== 0 && grid[cell.r][cell.c] !== v.id) {
+                        hitsObstacle = true;
+                        break;
+                    }
+                }
+            }
+            if (hitsObstacle) break;
+            // 没有空车位时，不允许车身任何部分离开网格
+            if (!allowExit && nextCells.some(cell => cell.r < 0 || cell.r >= GRID_SIZE || cell.c < 0 || cell.c >= GRID_SIZE)) break;
+            cells = nextCells;
+            steps++;
+        }
+        return { canExit, finalSteps: steps };
+    }
+
+    function canVehicleMove(v) {
+        const { canExit, finalSteps } = computeMove(v, freeSlotIndex() !== -1);
+        return canExit || finalSteps > 0;
+    }
+
+    function renderSlots() {
+        const slotsEl = document.getElementById('parking-slots');
+        slotsEl.innerHTML = '';
+        for (let i = 0; i < MAX_SLOTS; i++) {
+            const slot = document.createElement('div');
+            if (i >= maxSlots) {
+                slot.className = 'slot locked';
+                slot.innerHTML = `<div>🔒</div><div style="font-size:9px">50金币</div>`;
+                slot.onclick = () => unlockSlot(i);
+            } else {
+                slot.className = 'slot';
+                const car = parkedSlots[i];
+                if (car) {
+                    slot.innerHTML = `
+                        <div class="bg-${car.color}" style="width:100%; height:100%; border-radius:6px; display:flex; flex-direction:column; justify-content:center; align-items:center; color:white; font-weight:bold;">
+                            <span style="font-size:14px">🚌</span>
+                            <span style="font-size:11px">${car.boarded}/${car.capacity}</span>
+                        </div>
+                    `;
+                } else {
+                    slot.innerHTML = `<span style="color:rgba(255,255,255,0.4)">车位 ${i+1}</span>`;
+                }
+            }
+            slotsEl.appendChild(slot);
+        }
+    }
+
+    function renderPendingPool() {
+        const queue = document.getElementById('pending-queue');
+        const more = document.getElementById('pending-more');
+        queue.innerHTML = '';
+        const show = pendingPassengers.slice(0, 10);
+        show.forEach(color => {
+            const dot = document.createElement('div');
+            dot.className = `pending-dot bg-${color}`;
+            queue.appendChild(dot);
+        });
+        more.innerText = pendingPassengers.length > show.length ? `+${pendingPassengers.length - show.length}` : '';
+        document.getElementById('pending-pool').style.display = pendingPassengers.length || trackPassengers.length ? 'flex' : 'none';
+        renderEntranceLane();
+    }
+
+    function renderEntranceLane() {
+        const lane = document.getElementById('entrance-lane');
+        if (!lane) return;
+        lane.innerHTML = '';
+        const show = pendingPassengers.slice(0, 5);
+        show.forEach((color, idx) => {
+            const el = document.createElement('div');
+            el.className = `entrance-person bg-${color}`;
+            el.style.animationDelay = `${idx * 0.1}s`;
+            el.innerText = '🧑';
+            lane.appendChild(el);
+        });
+    }
+
+    function renderVehicles() {
+        const board = document.getElementById('grid-board');
+        document.querySelectorAll('.vehicle').forEach(el => el.remove());
+
+        vehicles.forEach(v => {
+            if (v.status !== 'board') return;
+            const canMove = canVehicleMove(v);
+            const carEl = document.createElement('div');
+            carEl.className = `vehicle bg-${v.color} ${canMove ? '' : 'blocked'}`;
+            carEl.id = `vehicle-${v.id}`;
+
+            carEl.style.width = `${CELL_PX * v.size - 6}px`;
+            carEl.style.height = `${CELL_PX - 6}px`;
+
+            const { dr, dc, angle } = DIR_DATA[v.dir];
+            const centerR = v.row + ((v.size - 1) * dr) / 2;
+            const centerC = v.col + ((v.size - 1) * dc) / 2;
+
+            carEl.style.left = `${centerC * CELL_PX + CELL_PX/2 - (CELL_PX * v.size)/2 + 3}px`;
+            carEl.style.top = `${centerR * CELL_PX + CELL_PX/2 - CELL_PX/2 + 3}px`;
+            carEl.style.transform = `rotate(${angle - 90}deg)`;
+            carEl.style.zIndex = v.id;
+
+            const ui = document.createElement('div');
+            ui.className = 'vehicle-ui';
+            const rot = angle - 90;
+            ui.style.transform = `rotate(${-rot}deg)`;
+            ui.innerHTML = `<div class="arrow">${ARROWS[v.dir] || '→'}</div><div class="capacity">${v.capacity}人</div>`;
+            carEl.appendChild(ui);
+
+            carEl.addEventListener('mouseenter', () => showPath(v));
+            carEl.addEventListener('mouseleave', hidePath);
+            carEl.addEventListener('click', () => driveVehicle(v));
+            board.appendChild(carEl);
+        });
+    }
+
+    function showPath(v) {
+        if (isBusy) return;
+        const allowExit = freeSlotIndex() !== -1;
+        const { finalSteps } = computeMove(v, allowExit);
+        const { dr, dc } = DIR_DATA[v.dir];
+        const centerR = v.row + ((v.size - 1) * dr) / 2;
+        const centerC = v.col + ((v.size - 1) * dc) / 2;
+        const startX = centerC * CELL_PX + CELL_PX / 2;
+        const startY = centerR * CELL_PX + CELL_PX / 2;
+        const targetR = centerR + finalSteps * dr;
+        const targetC = centerC + finalSteps * dc;
+        const endX = targetC * CELL_PX + CELL_PX / 2;
+        const endY = targetR * CELL_PX + CELL_PX / 2;
+        const line = document.getElementById('path-line');
+        const dot = document.getElementById('path-dot');
+        line.setAttribute('x1', startX);
+        line.setAttribute('y1', startY);
+        line.setAttribute('x2', endX);
+        line.setAttribute('y2', endY);
+        dot.setAttribute('cx', endX);
+        dot.setAttribute('cy', endY);
+        document.getElementById('path-svg').style.display = 'block';
+    }
+
+    function hidePath() {
+        document.getElementById('path-svg').style.display = 'none';
+    }
+
+    function pushUndo() {
+        if (undoStack.length >= 10) undoStack.shift();
+        undoStack.push({
+            vehicles: JSON.parse(JSON.stringify(vehicles)),
+            parkedSlots: JSON.parse(JSON.stringify(parkedSlots)),
+            trackPassengers: JSON.parse(JSON.stringify(trackPassengers)),
+            pendingPassengers: pendingPassengers.slice(),
+            coins,
+            maxSlots
+        });
+    }
+
+    function driveVehicle(v) {
+        if (isBusy) return;
+        isBusy = true;
+        pushUndo();
+        hidePath();
+
+        const allowExit = freeSlotIndex() !== -1;
+        const { canExit, finalSteps } = computeMove(v, allowExit);
+        const { dr, dc } = DIR_DATA[v.dir];
+        const el = document.getElementById(`vehicle-${v.id}`);
+
+        if (canExit) {
+            const slotIdx = freeSlotIndex();
+            if (slotIdx === -1) {
+                alert('车位已满！请先消除或清空车位。');
+                isBusy = false;
+                return;
+            }
+            v.status = 'parked';
+            parkedSlots[slotIdx] = v;
+            el.style.zIndex = 100;
+
+            const centerR = v.row + ((v.size - 1) * dr) / 2 + finalSteps * dr;
+            const centerC = v.col + ((v.size - 1) * dc) / 2 + finalSteps * dc;
+            const width = CELL_PX * v.size - 6;
+            const height = CELL_PX - 6;
+            el.style.left = `${centerC * CELL_PX + CELL_PX / 2 - width / 2}px`;
+            el.style.top = `${centerR * CELL_PX + CELL_PX / 2 - height / 2}px`;
+            el.style.opacity = '0';
+
+            setTimeout(() => {
+                buildGridMap();
+                renderVehicles();
+                renderSlots();
+                checkTrackBoarding();
+                checkDeadlock();
+                isBusy = false;
+                saveGame();
+            }, 250);
+        } else {
+            if (finalSteps === 0) {
+                el.style.zIndex = 100;
+                el.style.transform += ' scale(0.92)';
+                setTimeout(() => { renderVehicles(); isBusy = false; }, 120);
+                return;
+            }
+            el.style.zIndex = 100;
+            v.row = v.row + finalSteps * dr;
+            v.col = v.col + finalSteps * dc;
+            buildGridMap();
+            renderVehicles();
+            setTimeout(() => { checkDeadlock(); isBusy = false; saveGame(); }, 250);
+        }
+    }
+
+    function updateTrackPhysics() {
+        const container = document.getElementById('track-container');
+        document.querySelectorAll('.track-passenger').forEach(el => el.remove());
+
+        const cx = container.clientWidth / 2;
+        const cy = container.clientHeight / 2;
+        const rx = Math.max(40, cx - 28);
+        const ry = Math.max(20, cy - 14);
+
+        trackPassengers.forEach(p => {
+            p.angle += 0.018;
+            const x = cx + rx * Math.cos(p.angle);
+            const y = cy + ry * Math.sin(p.angle);
+            const pEl = document.createElement('div');
+            pEl.className = `track-passenger bg-${p.color}`;
+            pEl.style.left = `${x}px`;
+            pEl.style.top = `${y}px`;
+            container.appendChild(pEl);
+        });
+
+        animationFrameId = requestAnimationFrame(updateTrackPhysics);
+    }
+
+    function refillTrackFromPending() {
+        if (pendingPassengers.length > 0 && trackPassengers.length < TRACK_CAPACITY) {
+            const color = pendingPassengers.shift();
+            trackPassengers.push({
+                id: passengerIdSeq++,
+                color: color,
+                angle: Math.PI + Math.random() * 0.6
+            });
+            renderPendingPool();
+            updatePassengerCountUI();
+            checkTrackBoarding();
+            checkWinCondition();
+        }
+    }
+
+    function checkTrackBoarding() {
+        let stateChanged = false;
+        for (let i = 0; i < maxSlots; i++) {
+            const car = parkedSlots[i];
+            if (!car) continue;
+            while (car.boarded < car.capacity) {
+                const pIdx = trackPassengers.findIndex(p => p.color === car.color);
+                if (pIdx !== -1) {
+                    const p = trackPassengers.splice(pIdx, 1)[0];
+                    car.boarded++;
+                    stateChanged = true;
+                    animateBoarding(p.color, i);
+                    if (car.boarded >= car.capacity) {
+                        car.status = 'gone';
+                        parkedSlots[i] = null;
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        if (stateChanged) {
+            setTimeout(() => {
+                renderSlots();
+                updatePassengerCountUI();
+                checkWinCondition();
+                saveGame();
+            }, 100);
+        }
+    }
+
+    function animateBoarding(color, slotIndex) {
+        const topZone = document.querySelector('.top-zone');
+        const slots = document.querySelectorAll('.parking-slots .slot');
+        const slot = slots[slotIndex];
+        if (!slot || !topZone) return;
+        const zoneRect = topZone.getBoundingClientRect();
+        const slotRect = slot.getBoundingClientRect();
+        const startX = 18;
+        const startY = 85;
+        const endX = slotRect.left + slotRect.width / 2 - zoneRect.left;
+        const endY = slotRect.top + slotRect.height / 2 - zoneRect.top;
+
+        const el = document.createElement('div');
+        el.className = `boarding-passenger bg-${color}`;
+        el.style.left = `${startX}px`;
+        el.style.top = `${startY}px`;
+        topZone.appendChild(el);
+
+        requestAnimationFrame(() => {
+            el.style.left = `${endX}px`;
+            el.style.top = `${endY}px`;
+            el.style.opacity = '0';
+        });
+
+        setTimeout(() => el.remove(), 520);
+    }
+
+    function hasParkedCarThatCanBoard() {
+        for (let i = 0; i < maxSlots; i++) {
+            const car = parkedSlots[i];
+            if (!car || car.boarded >= car.capacity) continue;
+            if (trackPassengers.some(p => p.color === car.color) || pendingPassengers.includes(car.color)) return true;
+        }
+        return false;
+    }
+
+    function checkDeadlock() {
+        const totalPassengers = trackPassengers.length + pendingPassengers.length;
+        if (totalPassengers === 0) return;
+        const boardVehicles = vehicles.filter(v => v.status === 'board');
+        if (boardVehicles.length === 0) return;
+        const hasMove = boardVehicles.some(v => canVehicleMove(v));
+        if (!hasMove && !hasParkedCarThatCanBoard()) {
+            autoReshuffle();
+        }
+    }
+
+    function autoReshuffle(silent) {
+        const boardVehicles = vehicles.filter(v => v.status === 'board');
+        const specs = boardVehicles.map(v => ({ id: v.id, color: v.color, size: v.size, originalDir: v.dir }));
+        for (let attempt = 0; attempt < 200; attempt++) {
+            const placed = [];
+            let ok = true;
+            for (const spec of specs) {
+                const dirs = Object.keys(DIR_DATA);
+                let placedOne = false;
+                for (let inner = 0; inner < 500; inner++) {
+                    const dir = dirs[Math.floor(Math.random() * dirs.length)];
+                    const { dr, dc } = DIR_DATA[dir];
+                    const maxRow = GRID_SIZE - 1 - Math.max(0, (spec.size - 1) * dr);
+                    const minRow = Math.max(0, -(spec.size - 1) * dr);
+                    const maxCol = GRID_SIZE - 1 - Math.max(0, (spec.size - 1) * dc);
+                    const minCol = Math.max(0, -(spec.size - 1) * dc);
+                    if (minRow > maxRow || minCol > maxCol) continue;
+                    const row = Math.floor(Math.random() * (maxRow - minRow + 1)) + minRow;
+                    const col = Math.floor(Math.random() * (maxCol - minCol + 1)) + minCol;
+                    const cells = [];
+                    let inBounds = true;
+                    for (let i = 0; i < spec.size; i++) {
+                        const r = row + i * dr, c = col + i * dc;
+                        if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) { inBounds = false; break; }
+                        cells.push({ r, c });
+                    }
+                    if (!inBounds) continue;
+                    if (cells.some(cell => placed.some(p => p.cells.some(pc => pc.r === cell.r && pc.c === cell.c)))) continue;
+                    placed.push({ ...spec, dir, row, col, cells });
+                    placedOne = true;
+                    break;
+                }
+                if (!placedOne) { ok = false; break; }
+            }
+            if (ok && validatePlacement(placed)) {
+                vehicles.forEach(v => {
+                    const p = placed.find(x => x.id === v.id);
+                    if (p) { v.dir = p.dir; v.row = p.row; v.col = p.col; v.status = 'board'; v.boarded = 0; }
+                });
+                buildGridMap();
+                renderVehicles();
+                if (!silent) alert('⚠️ 检测到死局，已自动重排车辆位置');
+                return;
+            }
+        }
+        loadLevel(currentLevelIdx);
+    }
+
+    function checkWinCondition() {
+        const total = trackPassengers.length + pendingPassengers.length;
+        if (total === 0) {
+            setTimeout(() => {
+                document.getElementById('win-overlay').style.display = 'flex';
+                coins += 50;
+                document.getElementById('coin-count').innerText = coins;
+                saveGame();
+            }, 400);
+        }
+    }
+
+    function loadNextLevel() {
+        currentLevelIdx++;
+        loadLevel(currentLevelIdx);
+    }
+
+    function unlockSlot(i) {
+        if (maxSlots >= MAX_SLOTS) return;
+        if (coins >= 50) {
+            coins -= 50;
+            maxSlots++;
+            document.getElementById('coin-count').innerText = coins;
+            renderSlots();
+            checkTrackBoarding();
+            saveGame();
+        } else {
+            alert('金币不足！需要50金币。');
+        }
+    }
+
+    function renderProps() {
+        for (const key of Object.keys(propCounts)) {
+            const btn = document.getElementById(`btn-${key}`);
+            const badge = document.getElementById(`count-${key}`);
+            if (btn && badge) {
+                badge.innerText = propCounts[key];
+                btn.disabled = propCounts[key] <= 0;
+            }
+        }
+    }
+
+    function useProp(type) {
+        if (type === 'undo') {
+            if (undoStack.length === 0) { alert('没有可撤销的操作'); return; }
+            const state = undoStack.pop();
+            vehicles = state.vehicles;
+            parkedSlots = state.parkedSlots;
+            trackPassengers = state.trackPassengers;
+            pendingPassengers = state.pendingPassengers;
+            coins = state.coins;
+            maxSlots = state.maxSlots;
+            buildGridMap();
+            renderVehicles();
+            renderSlots();
+            renderPendingPool();
+            updatePassengerCountUI();
+            document.getElementById('coin-count').innerText = coins;
+            saveGame();
+            return;
+        }
+        if (propCounts[type] <= 0) return;
+        propCounts[type]--;
+        renderProps();
+
+        if (type === 'shuffle') {
+            autoReshuffle();
+        } else if (type === 'remove') {
+            const target = vehicles.find(v => v.status === 'board');
+            if (target) {
+                target.status = 'gone';
+                buildGridMap();
+                renderVehicles();
+                checkDeadlock();
+            } else {
+                alert('停车场上没有可移除的车辆');
+                propCounts.remove++;
+            }
+        } else if (type === 'magnet') {
+            let used = false;
+            for (let i = 0; i < maxSlots; i++) {
+                const car = parkedSlots[i];
+                if (!car || car.boarded >= car.capacity) continue;
+                const pIdx = trackPassengers.findIndex(p => p.color === car.color);
+                if (pIdx !== -1) {
+                    trackPassengers.splice(pIdx, 1);
+                    car.boarded++;
+                    used = true;
+                    if (car.boarded >= car.capacity) {
+                        car.status = 'gone';
+                        parkedSlots[i] = null;
+                    }
+                }
+            }
+            if (used) {
+                renderSlots();
+                updatePassengerCountUI();
+                checkWinCondition();
+            } else {
+                alert('当前没有可吸附的乘客');
+                propCounts.magnet++;
+            }
+        }
+        renderProps();
+        saveGame();
+    }
+
+    function openShop() {
+        document.getElementById('shop-coins').innerText = coins;
+        const slotBtn = document.getElementById('shop-slot');
+        slotBtn.disabled = maxSlots >= MAX_SLOTS || coins < 50;
+        slotBtn.innerText = maxSlots >= MAX_SLOTS ? '已解锁全部' : '50 金币';
+        document.getElementById('shop-props').disabled = coins < 30;
+        document.getElementById('shop-overlay').style.display = 'flex';
+    }
+
+    function closeShop() {
+        document.getElementById('shop-overlay').style.display = 'none';
+    }
+
+    function buySlot() {
+        if (maxSlots >= MAX_SLOTS || coins < 50) return;
+        coins -= 50;
+        maxSlots++;
+        document.getElementById('coin-count').innerText = coins;
+        renderSlots();
+        checkTrackBoarding();
+        openShop();
+        saveGame();
+    }
+
+    function buyPropPack() {
+        if (coins < 30) return;
+        coins -= 30;
+        propCounts.shuffle++;
+        propCounts.remove++;
+        propCounts.magnet++;
+        propCounts.undo++;
+        document.getElementById('coin-count').innerText = coins;
+        renderProps();
+        openShop();
+        saveGame();
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>

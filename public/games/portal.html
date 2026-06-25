@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>反应传送门 - AI 游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .portal-stage {
+      position: relative;
+      width: min(92vw, 420px);
+      height: min(92vw, 420px);
+      margin: 12px auto;
+      border-radius: 24px;
+      background: radial-gradient(circle at center, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 60%, transparent 80%);
+      border: 1px solid rgba(255,255,255,0.12);
+      touch-action: none;
+      overflow: hidden;
+    }
+    .portal-command {
+      font-size: clamp(2rem, 10vw, 3.2rem);
+      font-weight: 800;
+      text-align: center;
+      margin: 14px 0 4px;
+      min-height: 1.4em;
+      text-shadow: 0 2px 16px rgba(0,0,0,0.4);
+      letter-spacing: 2px;
+    }
+    .portal-command .hint {
+      font-size: 0.85rem;
+      color: #aaa;
+      font-weight: 500;
+      letter-spacing: 0;
+      display: block;
+      margin-top: 4px;
+    }
+    .portal-door {
+      position: absolute;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: rgba(0,0,0,0.75);
+      box-shadow: 0 0 24px currentColor, inset 0 0 16px rgba(255,255,255,0.35);
+      border: 3px solid rgba(255,255,255,0.5);
+      transform: translate(-50%, -50%);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .portal-door.pulse { animation: doorPulse 0.6s ease; }
+    @keyframes doorPulse {
+      0% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -50%) scale(1.15); }
+      100% { transform: translate(-50%, -50%) scale(1); }
+    }
+    .portal-door.up { top: 36px; left: 50%; }
+    .portal-door.down { bottom: -28px; left: 50%; }
+    .portal-door.left { top: 50%; left: 36px; }
+    .portal-door.right { top: 50%; right: -28px; }
+    .portal-avatar {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 56px;
+      height: 56px;
+      transform: translate(-50%, -50%);
+      font-size: 2.4rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: top 0.25s ease, left 0.25s ease, transform 0.25s ease;
+      z-index: 10;
+      filter: drop-shadow(0 4px 10px rgba(0,0,0,0.4));
+    }
+    .portal-avatar.moving { transition: top 0.18s ease-out, left 0.18s ease-out; }
+    .portal-feedback {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 3rem;
+      font-weight: 800;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 20;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    }
+    .portal-feedback.show { opacity: 1; }
+    .portal-feedback.correct { color: #6bcb77; }
+    .portal-feedback.wrong { color: #ff6b6b; }
+    .portal-feedback.timeout { color: #ffd93d; }
+    .portal-stats {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin: 10px 0;
+      font-size: 0.95rem;
+    }
+    .portal-stats b { color: #ffd93d; margin-left: 4px; }
+    .portal-timer {
+      width: min(92vw, 420px);
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      margin: 8px auto;
+      overflow: hidden;
+    }
+    .portal-timer-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #6bcb77, #ffd93d, #ff6b6b);
+      width: 100%;
+      transform-origin: left;
+      transition: transform 0.1s linear;
+    }
+.lives { display: flex; gap: 4px; align-items: center; }
+    .life { font-size: 1.1rem; }
+    .life.lost { filter: grayscale(1); opacity: 0.35; }
+    .portal-hint {
+      text-align: center;
+      color: #888;
+      font-size: 0.85rem;
+      margin-top: 8px;
+      margin-bottom: 80px;
+    }
+    .bottom-controls {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 10px 16px 16px;
+      background: linear-gradient(to top, rgba(15,12,41,0.95) 80%, transparent);
+      display: flex;
+      gap: 12px;
+      z-index: 30;
+    }
+    .bottom-controls .btn {
+      flex: 1;
+      margin-bottom: 0;
+    }
+    @media (max-width: 360px) {
+      .portal-door { width: 54px; height: 54px; font-size: 1.2rem; }
+      .portal-avatar { width: 48px; height: 48px; font-size: 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>🌀 反应传送门</h1>
+      <div class="settings-row">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </div>
+
+    <div id="lobby" class="screen active">
+      <div class="card">
+        <div class="form-group">
+          <label>你的名字</label>
+          <input type="text" id="player-name" placeholder="Player" maxlength="16">
+        </div>
+        <div class="mode-list">
+          <button class="btn btn-primary" onclick="startSingle()">🎮 单人挑战</button>
+          <button class="btn btn-warning" onclick="startMode('online')">🌐 在线对战</button>
+        </div>
+      </div>
+
+      <div id="online-panel" class="card" style="margin-top:14px;">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="sound-toggle" title="公开房间会显示在首页房间列表，私有房间只能通过房间号加入"><input type="checkbox" id="room-public-check" checked> 公开房间（可被搜索）</label>
+        <div id="room-privacy-hint" class="privacy-hint">公开房间会显示在房间列表，私有房间仅可通过房间号加入</div>
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">➕ 创建房间</button>
+        <button class="btn btn-secondary" onclick="showJoin()">🔗 加入房间</button>
+        <button class="btn btn-warning" onclick="quickMatch()">⚡ 快速匹配</button>
+        <div id="join-form" class="hidden" style="margin-top:12px;">
+          <div class="form-group">
+            <label>房间号</label>
+            <input type="text" id="room-id" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;">
+          </div>
+          <button class="btn btn-primary" onclick="joinRoom()">进入房间</button>
+        </div>
+        <div id="error-msg" class="status-bar hidden" style="background:rgba(255,77,77,.15);color:#ff6b6b;"></div>
+      </div>
+
+      <div id="leaderboard-panel" class="card" style="margin-top:14px;">
+        <h3 style="font-size:1rem;margin-bottom:10px;">🏆 反应传送门排行榜</h3>
+        <div id="leaderboard-list" style="font-size:0.9rem;">加载中...</div>
+        <div id="leaderboard-login-hint" class="hidden" style="margin-top:8px;font-size:0.8rem;color:#aaa;">登录后可提交分数到排行榜</div>
+      </div>
+    </div>
+
+    <div id="game" class="screen">
+      <div class="status-bar">
+        <div class="room-info-bar">
+          <span>房间:</span>
+          <span id="room-display" class="room-id">-</span>
+          <button class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:.8rem;" id="copy-btn" onclick="copyLink()">📋 复制</button>
+        </div>
+        <div class="portal-stats">
+          <span id="stat-mode">单人</span>
+          <span id="stat-level-wrap">关卡:<b id="stat-level">1</b></span>
+          <span>得分:<b id="stat-score">0</b></span>
+          <span id="stat-lives-wrap" class="lives"></span>
+          <span id="stat-time-wrap">时间:<b id="stat-time">5.0</b>s</span>
+        </div>
+        <div class="portal-stats" id="opponent-stats" style="display:none;">
+          <span>对手:<b id="opp-name">-</b></span>
+          <span>进度:<b id="opp-progress">0</b></span>
+          <span>得分:<b id="opp-score">0</b></span>
+          <span class="lives" id="opp-lives"></span>
+        </div>
+      </div>
+
+      <div class="portal-command" id="command-text">准备开始</div>
+
+      <div class="portal-timer"><div class="portal-timer-bar" id="timer-bar"></div></div>
+
+      <div class="portal-stage" id="portal-stage">
+        <div class="portal-door up" id="door-up" data-dir="up">上</div>
+        <div class="portal-door down" id="door-down" data-dir="down">下</div>
+        <div class="portal-door left" id="door-left" data-dir="left">左</div>
+        <div class="portal-door right" id="door-right" data-dir="right">右</div>
+        <div class="portal-avatar" id="avatar">🧍</div>
+        <div class="portal-feedback" id="feedback"></div>
+      </div>
+
+      <div class="portal-hint" id="control-hint">在上方区域滑动控制方向</div>
+    </div>
+
+    <div class="bottom-controls">
+      <button class="btn btn-warning" onclick="resetGame()">🔄 重新开始</button>
+      <button class="btn btn-danger" onclick="leaveGame()">🚪 离开</button>
+    </div>
+  </div>
+
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">游戏结束</h2>
+      <p id="end-subtitle">-</p>
+      <button class="btn btn-primary" onclick="rematchGame()">再来一局</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/sounds.js"></script>
+  <script src="/auth.js"></script>
+  <script src="/games/portal.js"></script>
+</body>
+</html>

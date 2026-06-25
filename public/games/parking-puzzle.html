@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>停车接客 - 龙虾游戏盒子</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:#f0f2fa;
+  color:#2d2d44;
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  min-height:100dvh;
+  overflow-x:hidden;
+}
+#app{max-width:460px;margin:0 auto;padding:8px 10px 90px}
+
+/* Header */
+.topbar{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 2px 8px;
+}
+.topbar a{
+  color:#5a5ea8;text-decoration:none;font-size:.85rem;font-weight:600;
+  background:#fff;padding:6px 10px;border-radius:20px;box-shadow:0 2px 6px rgba(0,0,0,.06);
+}
+.topbar h1{
+  flex:1;text-align:center;font-size:1.1rem;color:#3a3d6e;
+}
+.settings-btn{
+  width:34px;height:34px;border-radius:50%;border:none;
+  background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.06);
+  font-size:1rem;cursor:pointer;
+}
+
+/* HUD */
+.hud{
+  display:flex;justify-content:space-between;gap:8px;
+  margin-bottom:8px;
+}
+.hud-item{
+  flex:1;text-align:center;background:#fff;border-radius:12px;
+  padding:8px 4px;box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+.hud-item .label{font-size:.68rem;color:#777}
+.hud-item .val{font-size:1rem;font-weight:800;color:#3a3d6e}
+
+/* Board */
+.board-wrap{
+  width:100%;aspect-ratio:1;
+  border-radius:16px;overflow:hidden;
+  box-shadow:0 10px 30px rgba(58,61,110,.25);
+  margin-bottom:8px;
+}
+#board{
+  display:block;width:100%;height:100%;
+  background:linear-gradient(135deg,#5a5ea8,#3f437a);
+  touch-action:none;
+}
+
+/* Station */
+.station{
+  background:#fff;border-radius:14px;
+  padding:10px;box-shadow:0 2px 10px rgba(0,0,0,.05);
+  margin-bottom:8px;
+}
+.station-title{
+  font-size:.72rem;color:#777;margin-bottom:8px;display:flex;align-items:center;gap:4px;
+}
+.station-title span{font-size:.85rem}
+.queues{
+  display:flex;gap:6px;flex-wrap:wrap;
+}
+.queue{
+  flex:1;min-width:56px;max-width:80px;
+  background:#f6f7fb;border-radius:10px;padding:6px 4px;text-align:center;
+  border:2px solid transparent;transition:.15s;
+}
+.queue.active{border-color:#7b7fd4;background:#eef0ff}
+.q-dot{
+  width:18px;height:18px;border-radius:50%;margin:0 auto 4px;
+  border:2px solid rgba(255,255,255,.6);box-shadow:0 2px 4px rgba(0,0,0,.12);
+}
+.q-count{font-size:.7rem;color:#555;font-weight:700}
+.q-people{display:flex;justify-content:center;gap:1px;margin-top:4px;flex-wrap:wrap}
+.q-p{font-size:9px}
+.q-cap{font-size:.6rem;color:#999;margin-top:2px}
+
+/* Bottom buttons */
+.btn-bar{
+  display:flex;gap:8px;flex-wrap:wrap;justify-content:center;
+}
+.btn-bar .btn{
+  flex:1;min-width:72px;font-size:.78rem;padding:10px 8px;margin-bottom:0;
+  border-radius:12px;border:none;color:#fff;font-weight:700;cursor:pointer;
+  box-shadow:0 3px 10px rgba(0,0,0,.1);transition:.15s;
+}
+.btn-bar .btn:active{transform:scale(.96)}
+.btn-lvl{background:linear-gradient(135deg,#7b7fd4,#5a5ea8)}
+.btn-reset{background:linear-gradient(135deg,#a0a4c0,#7b7fd4)}
+
+/* Modals */
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(30,30,50,.72);z-index:99;padding:16px;backdrop-filter:blur(3px)}
+.modal.hidden{display:none}
+.modal-box{
+  background:#fff;border-radius:18px;padding:22px 18px;max-width:340px;width:100%;
+  text-align:center;box-shadow:0 14px 40px rgba(0,0,0,.25);
+}
+.modal-box h2{font-size:1.25rem;color:#3a3d6e;margin-bottom:6px}
+.modal-box p{font-size:.85rem;color:#666;margin-bottom:14px}
+.modal-box .btn{margin:4px auto;width:auto;min-width:120px;padding:10px 18px;border-radius:12px;border:none;color:#fff;font-weight:700;cursor:pointer}
+.modal-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+
+/* Level select */
+.lvl-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:12px 0}
+.lvl-btn{
+  aspect-ratio:1;border-radius:10px;border:2px solid #e6e7f0;
+  background:#f6f7fb;color:#555;font-size:.85rem;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;
+  font-weight:700;line-height:1.1;
+}
+.lvl-btn.locked{opacity:.35;pointer-events:none;background:#eceef5}
+.lvl-btn.cleared{border-color:#6bcb77;color:#6bcb77;background:#f0fff3}
+.lvl-btn.current{border-color:#7b7fd4;color:#7b7fd4;background:#eef0ff}
+.lvl-btn .stars{font-size:.55rem;letter-spacing:-1px;margin-top:2px;opacity:.95}
+
+/* Settings */
+.settings-row-label{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:1px solid #eee;font-size:.85rem;
+}
+.toggle{
+  width:44px;height:24px;border-radius:12px;background:#ccc;position:relative;cursor:pointer;transition:.2s;
+}
+.toggle.on{background:#6bcb77}
+.toggle::after{content:'';position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:2px;left:2px;transition:.2s}
+.toggle.on::after{left:22px}
+.danger-btn{background:linear-gradient(135deg,#ff6b6b,#d94040)}
+
+/* Hint toast */
+.toast{
+  position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
+  background:#3a3d6e;color:#fff;padding:8px 16px;border-radius:20px;
+  font-size:.8rem;z-index:97;opacity:0;transition:.3s;pointer-events:none;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <a href="/">← 返回</a>
+    <h1>🚗 停车接客</h1>
+    <button class="settings-btn" onclick="openSettings()" title="设置">⚙️</button>
+  </div>
+
+  <div class="hud">
+    <div class="hud-item"><div class="label">关卡</div><div class="val" id="hud-lvl">1</div></div>
+    <div class="hud-item"><div class="label">步数</div><div class="val" id="hud-moves">0</div></div>
+    <div class="hud-item"><div class="label">剩余乘客</div><div class="val" id="hud-cap">0</div></div>
+  </div>
+
+  <div class="board-wrap">
+    <canvas id="board"></canvas>
+  </div>
+
+  <div class="btn-bar">
+    <button class="btn btn-lvl" onclick="openLevelSelect()">📋 选关</button>
+    <button class="btn btn-reset" onclick="resetLevel()">🔄 重来</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Win Modal -->
+<div class="modal hidden" id="win-modal">
+  <div class="modal-box">
+    <h2>🎉 通关成功！</h2>
+    <p id="win-text"></p>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="nextLevel()" style="background:linear-gradient(135deg,#6bcb77,#4aa85a)">下一关</button>
+      <button class="btn btn-ghost" onclick="closeModals()" style="background:#e6e7f0;color:#555">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lose Modal -->
+<div class="modal hidden" id="lose-modal">
+  <div class="modal-box">
+    <h2>💀 无法继续</h2>
+    <p>仍有乘客未上车，但所有车辆都被堵死。</p>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="resetLevel()" style="background:linear-gradient(135deg,#ff6b6b,#d94040)">重来</button>
+      <button class="btn btn-ghost" onclick="closeModals()" style="background:#e6e7f0;color:#555">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Level Modal -->
+<div class="modal hidden" id="lvl-modal">
+  <div class="modal-box">
+    <h2>📋 选择关卡</h2>
+    <div class="lvl-grid" id="lvl-grid"></div>
+    <button class="btn btn-ghost" onclick="closeModals()" style="background:#e6e7f0;color:#555">关闭</button>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal hidden" id="settings-modal">
+  <div class="modal-box">
+    <h2>⚙️ 设置</h2>
+    <div class="settings-row-label">
+      <span>音效</span>
+      <div class="toggle on" id="sfx-toggle" onclick="toggleSfx()"></div>
+    </div>
+    <p style="margin-top:12px;font-size:.75rem;color:#999">关卡进度与星级评价会自动保存。</p>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-primary danger-btn" onclick="resetProgress()" style="min-width:140px">清除存档</button>
+      <button class="btn btn-ghost" onclick="closeModals()" style="background:#e6e7f0;color:#555">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ==================== Constants ==================== */
+const COLORS = ['#e74c3c','#3498db','#2ecc71','#f1c40f','#9b59b6','#e67e22'];
+const COLOR_NAMES = ['红','蓝','绿','黄','紫','橙'];
+const DIRS = [
+  {dr:-1,dc:0,label:'↑'},{dr:0,dc:1,label:'→'},{dr:1,dc:0,label:'↓'},{dr:0,dc:-1,label:'←'}
+];
+const SAVE_KEY = 'parking_puzzle_v3';
+const STATION_CAP = 7;
+
+/* ==================== Game State ==================== */
+let G = {
+  level:1, maxLevel:1, totalLevels:30,
+  stars:{},
+  settings:{music:true, sfx:true},
+  rows:8, cols:8,
+  cars:[], station:{}, gates:[],
+  initialCars:[],
+  selectedCar:null, animating:false,
+  cellSize:0,
+  moves:0, optimalMoves:null
+};
+
+/* ==================== Save / Load ==================== */
+function save(){
+  localStorage.setItem(SAVE_KEY, JSON.stringify({
+    level:G.level, maxLevel:G.maxLevel, stars:G.stars, settings:G.settings
+  }));
+}
+function load(){
+  try{
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if(d){
+      G.level = Math.max(1, Math.min(G.totalLevels, d.level||1));
+      G.maxLevel = Math.max(1, Math.min(G.totalLevels, d.maxLevel||1));
+      G.stars = d.stars || {};
+      G.settings = Object.assign({music:true,sfx:true}, d.settings||{});
+      G.settings.music = true;
+    }
+  }catch(e){}
+}
+function resetProgress(){
+  if(!confirm('确定要清除所有进度和星级评价吗？')) return;
+  localStorage.removeItem(SAVE_KEY);
+  location.reload();
+}
+
+/* ==================== RNG ==================== */
+function mulberry32(a){
+  return function(){
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function shuffleInPlace(arr, rng){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(rng()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+
+/* ==================== Level Configs ==================== */
+function getLevelConfig(i){
+  const hard = [
+    {rows:8,cols:8,colors:4,caps:[4,4,2,2]},
+    {rows:8,cols:8,colors:4,caps:[4,4,4,2]},
+    {rows:8,cols:8,colors:5,caps:[4,4,2,2,2]},
+    {rows:8,cols:8,colors:5,caps:[4,4,4,2,2]},
+    {rows:9,cols:9,colors:5,caps:[4,4,4,2,2]},
+    {rows:9,cols:9,colors:5,caps:[4,4,4,4,2]},
+    {rows:9,cols:9,colors:6,caps:[4,4,2,2,2,2]},
+    {rows:9,cols:9,colors:6,caps:[4,4,4,2,2,2]},
+    {rows:9,cols:9,colors:6,caps:[4,4,4,4,2,2]},
+    {rows:10,cols:10,colors:6,caps:[4,4,4,2,2,2]},
+    {rows:10,cols:10,colors:6,caps:[4,4,4,4,2,2]},
+    {rows:10,cols:10,colors:6,caps:[4,4,4,4,4,2]},
+    {rows:10,cols:10,colors:6,caps:[4,4,4,4,4,4]},
+    {rows:11,cols:11,colors:6,caps:[4,4,4,4,2,2,2]},
+    {rows:11,cols:11,colors:6,caps:[4,4,4,4,4,2,2]},
+    {rows:11,cols:11,colors:6,caps:[4,4,4,4,4,4,2]},
+    {rows:11,cols:11,colors:6,caps:[4,4,4,4,4,4,4]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,2,2,2]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,2,2]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,2]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,2]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,4]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,4,2]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,4,4]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,4,4,2]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,4,4,4]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,4,4,4,2]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,4,4,4,4]},
+    {rows:12,cols:12,colors:6,caps:[4,4,4,4,4,4,4,4,4,4,4,4,2]}
+  ];
+  if(i <= hard.length) return hard[i-1];
+  const n = 10 + Math.floor((i-hard.length)/2);
+  const caps = [];
+  for(let k=0;k<n;k++) caps.push(k%3===0 ? 4 : 2);
+  return {rows:12, cols:12, colors:6, caps};
+}
+
+/* ==================== Board Helpers ==================== */
+function cellKey(r,c){ return r+','+c; }
+function occupiedCells(car){
+  const d = DIRS[car.dir];
+  const cells = [];
+  for(let i=0;i<car.size;i++) cells.push({r:car.r+d.dr*i, c:car.c+d.dc*i});
+  return cells;
+}
+function getHead(car){
+  const cells = occupiedCells(car);
+  return cells[cells.length-1];
+}
+function getOccupied(){
+  const set = new Set();
+  G.cars.forEach(car => occupiedCells(car).forEach(p => set.add(cellKey(p.r,p.c))));
+  return set;
+}
+function isBlocked(car){
+  const d = DIRS[car.dir];
+  const head = getHead(car);
+  const nr = head.r + d.dr, nc = head.c + d.dc;
+  if(nr < 0 || nr >= G.rows || nc < 0 || nc >= G.cols) return true;
+  const occ = getOccupied();
+  const myKeys = new Set(occupiedCells(car).map(p => cellKey(p.r,p.c)));
+  return occ.has(cellKey(nr,nc)) && !myKeys.has(cellKey(nr,nc));
+}
+function canMove(car){ return !G.animating && !isBlocked(car); }
+function maxSlideSteps(car){
+  const d = DIRS[car.dir];
+  const occ = getOccupied();
+  const myKeys = new Set(occupiedCells(car).map(p => cellKey(p.r,p.c)));
+  const others = new Set([...occ].filter(k => !myKeys.has(k)));
+  let steps = 0;
+  let hr = getHead(car).r, hc = getHead(car).c;
+  while(true){
+    hr += d.dr; hc += d.dc;
+    if(hr < 0 || hr >= G.rows || hc < 0 || hc >= G.cols) break;
+    if(others.has(cellKey(hr,hc))) break;
+    steps++;
+  }
+  return steps;
+}
+function findReachableTail(car){
+  const d = DIRS[car.dir];
+  const steps = maxSlideSteps(car);
+  return {r: car.r + steps*d.dr, c: car.c + steps*d.dc, steps};
+}
+
+/* ==================== Level Generator ==================== */
+function getBorderCells(rows,cols){
+  const list = [];
+  for(let c=0;c<cols;c++){ list.push({r:0,c}); list.push({r:rows-1,c}); }
+  for(let r=1;r<rows-1;r++){ list.push({r,c:0}); list.push({r,c:cols-1}); }
+  return list;
+}
+function outwardDirs(gate, rows, cols){
+  const s = new Set();
+  if(gate.r === 0) s.add(0);
+  if(gate.r === rows-1) s.add(2);
+  if(gate.c === 0) s.add(3);
+  if(gate.c === cols-1) s.add(1);
+  return [...s];
+}
+function maxDistInward(gate, d, size, rows, cols){
+  for(let dist=1;;dist++){
+    const head = {r: gate.r - dist*d.dr, c: gate.c - dist*d.dc};
+    let ok = true;
+    for(let i=0;i<size;i++){
+      const r = head.r - i*d.dr, c = head.c - i*d.dc;
+      if(r < 0 || r >= rows || c < 0 || c >= cols){ ok = false; break; }
+    }
+    if(!ok) return Math.max(0, dist-1);
+  }
+}
+function score4Placement(cells, gate, rows, cols, otherGates){
+  let score = 0;
+  const centerR = (rows-1)/2, centerC = (cols-1)/2;
+  for(const p of cells){
+    score += Math.abs(p.r - centerR) + Math.abs(p.c - centerC);
+  }
+  if(otherGates){
+    for(const p of cells){
+      for(const g of otherGates){
+        if(g === gate) continue;
+        const dist = Math.abs(p.r - g.r) + Math.abs(p.c - g.c);
+        score -= (dist < 4 ? (4 - dist)*2 : 0);
+      }
+    }
+  }
+  return score;
+}
+function tryPlaceCar(grid, rows, cols, gate, size, rng, otherGates){
+  const dirList = shuffleInPlace(outwardDirs(gate, rows, cols), rng);
+  const candidates = [];
+  for(const di of dirList){
+    const d = DIRS[di];
+    const maxDist = maxDistInward(gate, d, size, rows, cols);
+    if(maxDist < 1) continue;
+    const dists = [];
+    for(let i=1;i<=maxDist;i++) dists.push(i);
+    shuffleInPlace(dists, rng);
+    for(const dist of dists){
+      const head = {r: gate.r - dist*d.dr, c: gate.c - dist*d.dc};
+      const tail = {r: head.r - (size-1)*d.dr, c: head.c - (size-1)*d.dc};
+      let ok = true;
+      const cells = [];
+      for(let i=0;i<size;i++){
+        const r = head.r - i*d.dr, c = head.c - i*d.dc;
+        const k = cellKey(r,c);
+        if(grid.has(k)){ ok = false; break; }
+        cells.push({r,c});
+      }
+      if(ok){
+        if(size === 4){
+          candidates.push({r: tail.r, c: tail.c, dir: di, cells, score: score4Placement(cells, gate, rows, cols, otherGates)});
+        }else{
+          return {r: tail.r, c: tail.c, dir: di, cells};
+        }
+      }
+    }
+  }
+  if(size === 4 && candidates.length){
+    candidates.sort((a,b)=>b.score - a.score);
+    return candidates[0];
+  }
+  return null;
+}
+function assignGates(rows,cols,colors,rng){
+  const border = getBorderCells(rows,cols);
+  shuffleInPlace(border, rng);
+  return border.slice(0, colors);
+}
+function generateLevel(idx){
+  const cfg = getLevelConfig(idx);
+  const rng = mulberry32(idx * 742017 + 13331);
+  for(let attempt=0; attempt<200; attempt++){
+    const gates = assignGates(cfg.rows, cfg.cols, cfg.colors, rng);
+    const grid = new Set();
+    const cars = [];
+    const station = {};
+    for(let ci=0; ci<cfg.colors; ci++) station[ci] = [];
+    let ok = true;
+    const caps = [...cfg.caps];
+    shuffleInPlace(caps, rng);
+    caps.sort((a,b)=>b-a);
+    for(let k=0;k<caps.length;k++){
+      const cap = caps[k];
+      const color = k % cfg.colors;
+      const size = cap === 4 ? 4 : 2;
+      const otherGates = gates.filter((_,gi)=>gi !== color);
+      const placed = tryPlaceCar(grid, cfg.rows, cfg.cols, gates[color], size, rng, otherGates);
+      if(!placed){ ok = false; break; }
+      const car = {
+        r: placed.r, c: placed.c, dir: placed.dir, size, color, cap,
+        load:0, id: 'c'+k
+      };
+      cars.push(car);
+      occupiedCells(car).forEach(p => grid.add(cellKey(p.r,p.c)));
+      for(let i=0;i<cap;i++) station[color].push(color);
+    }
+    if(ok){
+      const stationCounts = {};
+      for(const k in station) stationCounts[k] = station[k].length;
+      const sol = solveState({cars: cars.map(c => ({...c, alive:true})), station: stationCounts}, gates, cfg.rows, cfg.cols, 80);
+      if(sol) return {rows:cfg.rows, cols:cfg.cols, cars, station, gates, colors:cfg.colors, optimal:sol.length};
+    }
+  }
+  return {rows:8, cols:8, colors:2, optimal:2,
+    cars:[
+      {r:0,c:0,dir:1,size:2,color:0,cap:2,load:0,id:'c0'},
+      {r:7,c:0,dir:0,size:2,color:1,cap:2,load:0,id:'c1'}
+    ],
+    station:{0:[0,0],1:[1,1]},
+    gates:[{r:0,c:7},{r:0,c:0}]};
+}
+
+/* ==================== Load / Init ==================== */
+function loadLevel(i){
+  G.level = Math.max(1, Math.min(G.totalLevels, i));
+  const lvl = generateLevel(G.level);
+  G.rows = lvl.rows; G.cols = lvl.cols;
+  G.cars = lvl.cars.map(c => ({...c}));
+  G.station = {};
+  for(const k in lvl.station) G.station[k] = [...lvl.station[k]];
+  G.gates = lvl.gates;
+  G.colors = lvl.colors;
+  G.initialCars = G.cars.map(c => ({...c}));
+  G.selectedCar = null;
+  G.animating = false;
+  G.moves = 0;
+  setupCanvas();
+  render();
+  updateUI();
+  const sol = solveCurrentLevel(80);
+  G.optimalMoves = sol ? sol.length : (lvl.optimal || null);
+}
+function setupCanvas(){
+  const canvas = document.getElementById('board');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const w = Math.floor(rect.width);
+  canvas.width = w; canvas.height = w;
+  canvas.style.width = w+'px'; canvas.style.height = w+'px';
+  G.cellSize = w / G.cols;
+}
+
+/* ==================== Rendering ==================== */
+function render(){
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  const sz = G.cellSize;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // board background
+  const grad = ctx.createLinearGradient(0,0,canvas.width,canvas.height);
+  grad.addColorStop(0,'#6b70c4');
+  grad.addColorStop(1,'#3f437a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,.12)';
+  ctx.lineWidth = 1;
+  for(let r=0;r<=G.rows;r++){ ctx.beginPath(); ctx.moveTo(0,r*sz); ctx.lineTo(G.cols*sz,r*sz); ctx.stroke(); }
+  for(let c=0;c<=G.cols;c++){ ctx.beginPath(); ctx.moveTo(c*sz,0); ctx.lineTo(c*sz,G.rows*sz); ctx.stroke(); }
+
+  // gates
+  G.gates.forEach((gate,ci) => {
+    if(!gate) return;
+    const pad = sz*0.12;
+    ctx.fillStyle = hexToRgba(COLORS[ci],0.35);
+    ctx.beginPath();
+    ctx.roundRect(gate.c*sz+pad, gate.r*sz+pad, sz-pad*2, sz-pad*2, 8);
+    ctx.fill();
+    ctx.strokeStyle = COLORS[ci];
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${sz*0.35}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🚉', gate.c*sz+sz/2, gate.r*sz+sz/2);
+  });
+
+  // selected path preview
+  if(G.selectedCar){
+    const car = G.selectedCar;
+    const d = DIRS[car.dir];
+    const maxSteps = maxSlideSteps(car);
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    for(let s=1;s<=maxSteps;s++){
+      const rr = car.r + s*d.dr, cc = car.c + s*d.dc;
+      ctx.beginPath();
+      ctx.roundRect(cc*sz+2, rr*sz+2, sz-4, sz-4, 6);
+      ctx.fill();
+    }
+  }
+
+  // cars
+  G.cars.forEach(car => {
+    const blocked = isBlocked(car);
+    const selected = G.selectedCar === car;
+    const cells = occupiedCells(car);
+    const minR = Math.min(...cells.map(p=>p.r)), minC = Math.min(...cells.map(p=>p.c));
+    const maxR = Math.max(...cells.map(p=>p.r)), maxC = Math.max(...cells.map(p=>p.c));
+    const pad = sz*0.15;
+    const x = minC*sz + pad, y = minR*sz + pad;
+    const w = (maxC-minC+1)*sz - pad*2, h = (maxR-minR+1)*sz - pad*2;
+    const r = 8;
+    ctx.save();
+    ctx.globalAlpha = blocked ? 0.45 : 1;
+    ctx.fillStyle = blocked ? '#9a9db8' : COLORS[car.color];
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+    ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h);
+    ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
+    ctx.fill();
+    // inner sheen
+    ctx.fillStyle = 'rgba(255,255,255,.12)';
+    ctx.beginPath();
+    ctx.roundRect(x+pad*0.6,y+pad*0.6,w-pad*1.2,h/2-pad*0.6,6);
+    ctx.fill();
+    if(selected){
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.shadowColor = 'rgba(255,255,255,.6)'; ctx.shadowBlur = 12;
+    }
+    const cx = x+w/2, cy = y+h/2;
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.min(w,h)*0.42}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowBlur = 0;
+    ctx.fillText(DIRS[car.dir].label, cx, cy-2);
+    ctx.font = `${Math.min(w,h)*0.22}px sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.fillText(car.load+'/'+car.cap, cx, cy+Math.min(w,h)*0.28);
+    // passenger dots
+    if(car.load > 0){
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      for(let i=0;i<car.load;i++){
+        const dx = x + w*0.2 + (i%4)*(w*0.18);
+        const dy = y + h*0.78 + Math.floor(i/4)*(h*0.12);
+        ctx.beginPath(); ctx.arc(dx, dy, 2.5, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    ctx.restore();
+  });
+}
+function hexToRgba(hex,a){
+  const n = parseInt(hex.slice(1),16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+
+/* ==================== UI Updates ==================== */
+function updateUI(){
+  document.getElementById('hud-lvl').textContent = G.level;
+  document.getElementById('hud-moves').textContent = G.moves;
+  document.getElementById('hud-cap').textContent = totalPax();
+  updateSettingsToggles();
+}
+function totalPax(){
+  let n=0; for(const k in G.station) n += G.station[k].length; return n;
+}
+function updateSettingsToggles(){
+  document.getElementById('sfx-toggle').classList.toggle('on', G.settings.sfx);
+}
+
+/* ==================== Input (tap to rush) ==================== */
+function getPointerPos(e){
+  const canvas = document.getElementById('board');
+  const rect = canvas.getBoundingClientRect();
+  let clientX, clientY;
+  if(e.touches && e.touches.length){ clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
+  else if(e.changedTouches && e.changedTouches.length){ clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; }
+  else { clientX = e.clientX; clientY = e.clientY; }
+  const x = (clientX - rect.left) / rect.width * canvas.width;
+  const y = (clientY - rect.top) / rect.height * canvas.height;
+  const col = Math.floor(x / G.cellSize);
+  const row = Math.floor(y / G.cellSize);
+  return {row, col};
+}
+function onPointerDown(e){
+  if(G.animating) return;
+  e.preventDefault();
+  const pos = getPointerPos(e);
+  const row = pos.row, col = pos.col;
+
+  const clicked = G.cars.find(c => occupiedCells(c).some(p => p.r===row && p.c===col));
+  if(!clicked){ G.selectedCar = null; render(); return; }
+  G.selectedCar = clicked;
+  playSfx('select');
+  render();
+  if(canMove(clicked)){
+    const steps = maxSlideSteps(clicked);
+    if(steps > 0) moveCarAnimated(clicked, steps);
+  }
+}
+const boardCanvas = document.getElementById('board');
+boardCanvas.addEventListener('mousedown', onPointerDown);
+boardCanvas.addEventListener('touchstart', onPointerDown, {passive:false});
+
+/* ==================== Movement & Loading ==================== */
+function moveCarAnimated(car, steps){
+  if(!canMove(car) || steps <= 0) return;
+  G.animating = true;
+  G.selectedCar = null;
+  const d = DIRS[car.dir];
+  playSfx('move');
+  G.moves++;
+  let i = 0;
+  function step(){
+    if(i >= steps){
+      G.animating = false;
+      render(); updateUI(); checkGameState();
+      return;
+    }
+    car.r += d.dr; car.c += d.dc; i++;
+    const head = getHead(car);
+    const gate = G.gates[car.color];
+    if(gate && head.r === gate.r && head.c === gate.c){
+      const q = G.station[car.color];
+      if(q && q.length > 0 && car.load < car.cap){
+        const load = Math.min(car.cap - car.load, q.length);
+        car.load += load;
+        q.splice(0, load);
+        playSfx('load');
+        if(car.load >= car.cap){
+          G.cars = G.cars.filter(c => c !== car);
+          G.animating = false;
+          render(); updateUI(); checkGameState();
+          return;
+        }
+      }
+    }
+    render();
+    setTimeout(step, 45);
+  }
+  step();
+}
+function computeStars(moves, optimal){
+  if(!optimal || moves <= optimal) return 3;
+  if(moves <= optimal + 2) return 2;
+  return 1;
+}
+function showWinModal(stars, moves, optimal){
+  const starStr = '⭐'.repeat(stars) + '☆'.repeat(3-stars);
+  document.getElementById('win-text').innerHTML =
+    `<div style="font-size:1.6rem;letter-spacing:4px;margin-bottom:6px">${starStr}</div>` +
+    `步数 ${moves} / 最优 ${optimal}`;
+  document.getElementById('win-modal').classList.remove('hidden');
+}
+function checkGameState(){
+  if(totalPax() === 0){
+    const optimal = G.optimalMoves || G.moves;
+    const stars = computeStars(G.moves, optimal);
+    if(!G.stars[G.level] || G.stars[G.level] < stars) G.stars[G.level] = stars;
+    if(G.level >= G.maxLevel) G.maxLevel = Math.min(G.level+1, G.totalLevels);
+    save();
+    showWinModal(stars, G.moves, optimal);
+    playSfx('win');
+    return;
+  }
+  const anyMove = G.cars.some(c => canMove(c));
+  if(!anyMove){
+    document.getElementById('lose-modal').classList.remove('hidden');
+    playSfx('lose');
+  }
+}
+
+/* ==================== Level Select & Modals ==================== */
+function openLevelSelect(){
+  const grid = document.getElementById('lvl-grid'); grid.innerHTML = '';
+  for(let i=1;i<=G.totalLevels;i++){
+    const btn = document.createElement('div');
+    btn.className = 'lvl-btn' +
+      (i > G.maxLevel ? ' locked' : '') +
+      (i < G.maxLevel ? ' cleared' : '') +
+      (i === G.level ? ' current' : '');
+    const stars = G.stars[i] || 0;
+    btn.innerHTML = `<span>${i}</span><span class="stars">${'⭐'.repeat(stars)}${'☆'.repeat(3-stars)}</span>`;
+    if(i <= G.maxLevel){
+      btn.onclick = () => { closeModals(); loadLevel(i); save(); };
+    }
+    grid.appendChild(btn);
+  }
+  document.getElementById('lvl-modal').classList.remove('hidden');
+}
+function openSettings(){
+  updateSettingsToggles();
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+function nextLevel(){
+  closeModals();
+  loadLevel(Math.min(G.level+1, G.totalLevels));
+  save();
+}
+function resetLevel(){
+  closeModals();
+  loadLevel(G.level);
+  save();
+}
+function closeModals(){
+  document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+}
+
+/* ==================== Settings / Audio ==================== */
+function toggleSfx(){
+  G.settings.sfx = !G.settings.sfx;
+  updateSettingsToggles();
+  save();
+}
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1400);
+}
+
+/* ==================== Sound FX ==================== */
+const SFX = {};
+function initAudio(){
+  if(SFX.ctx) return;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if(!AudioCtx) return;
+  SFX.ctx = new AudioCtx();
+}
+function playSfx(type){
+  if(!G.settings.sfx) return;
+  initAudio();
+  const ctx = SFX.ctx;
+  if(!ctx) return;
+  if(ctx.state === 'suspended') ctx.resume();
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.connect(g); g.connect(ctx.destination);
+  const now = ctx.currentTime;
+  if(type === 'select'){ o.type='sine'; o.frequency.setValueAtTime(520,now); o.frequency.exponentialRampToValueAtTime(620,now+0.08); g.gain.setValueAtTime(0.05,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.1); o.start(); o.stop(now+0.11); }
+  else if(type === 'move'){ o.type='triangle'; o.frequency.setValueAtTime(300,now); o.frequency.linearRampToValueAtTime(360,now+0.12); g.gain.setValueAtTime(0.04,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.15); o.start(); o.stop(now+0.16); }
+  else if(type === 'load'){ o.type='sine'; o.frequency.setValueAtTime(660,now); o.frequency.exponentialRampToValueAtTime(880,now+0.15); g.gain.setValueAtTime(0.05,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.18); o.start(); o.stop(now+0.19); }
+  else if(type === 'win'){ o.type='sine'; o.frequency.setValueAtTime(523,now); o.frequency.setValueAtTime(659,now+0.15); o.frequency.setValueAtTime(784,now+0.3); g.gain.setValueAtTime(0.06,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.5); o.start(); o.stop(now+0.5); }
+  else if(type === 'lose'){ o.type='sawtooth'; o.frequency.setValueAtTime(300,now); o.frequency.exponentialRampToValueAtTime(120,now+0.4); g.gain.setValueAtTime(0.05,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.45); o.start(); o.stop(now+0.46); }
+}
+
+/* ==================== Background Music ==================== */
+(function(){
+  let ctx, interval, playing=false;
+  const NOTES = {C4:262,D4:294,E4:330,F4:349,G4:392,A4:440,B4:494,C5:523,D5:587,E5:659};
+  const melody = [
+    [NOTES.C4,.2],[NOTES.E4,.2],[NOTES.G4,.2],[NOTES.C5,.3],[NOTES.G4,.1],[NOTES.E4,.2],[NOTES.C4,.2],
+    [NOTES.D4,.2],[NOTES.F4,.2],[NOTES.A4,.2],[NOTES.D5,.3],[NOTES.A4,.1],[NOTES.F4,.2],[NOTES.D4,.2],
+    [NOTES.E4,.2],[NOTES.G4,.2],[NOTES.B4,.2],[NOTES.E5,.3],[NOTES.B4,.1],[NOTES.G4,.2],[NOTES.E4,.2]
+  ];
+  let pos=0;
+  function step(){
+    if(!G.settings.music || !playing) return;
+    const [n,d] = melody[pos % melody.length];
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'triangle'; o.frequency.value = n;
+    g.gain.setValueAtTime(0.06, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + d*0.85);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + d);
+    pos++;
+  }
+  function startMusic(){
+    if(!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if(ctx.state === 'suspended') ctx.resume();
+    if(!playing){ playing = true; pos = 0; interval = setInterval(step, 260); }
+  }
+  ['click','keydown','touchstart'].forEach(evt => document.addEventListener(evt, startMusic, {once:true}));
+})();
+
+/* ==================== Solver (optimal solution + verification) ==================== */
+function buildSolverState(){
+  const cars = G.cars.map(c => ({...c, alive:true}));
+  const station = {};
+  for(const k in G.station) station[k] = G.station[k].length;
+  return {cars, station};
+}
+function stateHash(s){
+  const alive = s.cars.filter(c => c.alive).map(c => `${c.id}:${c.r},${c.c},${c.load}`).sort();
+  const stat = Object.keys(s.station).sort().map(k => `${k}:${s.station[k]}`).join('|');
+  return alive.join(';') + '|' + stat;
+}
+function slideStepsState(s, car, rows, cols){
+  const d = DIRS[car.dir];
+  const occ = new Set();
+  s.cars.forEach((c) => {
+    if(c.alive && c.id !== car.id){
+      const dd = DIRS[c.dir];
+      for(let i=0;i<c.size;i++) occ.add(cellKey(c.r+dd.dr*i, c.c+dd.dc*i));
+    }
+  });
+  let steps=0;
+  let hr = car.r + (car.size-1)*d.dr, hc = car.c + (car.size-1)*d.dc;
+  while(true){
+    const nr = hr + d.dr, nc = hc + d.dc;
+    if(nr < 0 || nr >= rows || nc < 0 || nc >= cols) break;
+    if(occ.has(cellKey(nr,nc))) break;
+    steps++; hr = nr; hc = nc;
+  }
+  return steps;
+}
+
+function simulateMoveState(s, carId, gates, rows, cols){
+  const ns = {
+    cars: s.cars.map(c => ({...c})),
+    station: {...s.station}
+  };
+  const car = ns.cars.find(c => c.id === carId && c.alive);
+  if(!car) return null;
+  const steps = slideStepsState(ns, car, rows, cols);
+  if(steps <= 0) return null;
+  const d = DIRS[car.dir];
+  const gate = gates[car.color];
+  for(let i=0;i<steps;i++){
+    car.r += d.dr; car.c += d.dc;
+    const head = {r: car.r + (car.size-1)*d.dr, c: car.c + (car.size-1)*d.dc};
+    if(gate && head.r === gate.r && head.c === gate.c && ns.station[car.color] > 0){
+      const load = Math.min(car.cap - car.load, ns.station[car.color]);
+      car.load += load;
+      ns.station[car.color] -= load;
+      if(car.load >= car.cap){ car.alive = false; break; }
+    }
+  }
+  return ns;
+}
+function solveState(start, gates, rows, cols, maxDepth=30){
+  const visited = new Set();
+  const queue = [{state: start, moves: []}];
+  visited.add(stateHash(start));
+  while(queue.length){
+    const {state, moves} = queue.shift();
+    if(Object.values(state.station).every(v => v === 0)) return moves;
+    if(moves.length >= maxDepth) continue;
+    for(const car of state.cars){
+      if(!car.alive) continue;
+      if(slideStepsState(state, car, rows, cols) === 0) continue;
+      const ns = simulateMoveState(state, car.id, gates, rows, cols);
+      if(!ns) continue;
+      const h = stateHash(ns);
+      if(visited.has(h)) continue;
+      visited.add(h);
+      queue.push({state: ns, moves: [...moves, car.id]});
+    }
+  }
+  return null;
+}
+function solveCurrentLevel(maxDepth=80){
+  return solveState(buildSolverState(), G.gates, G.rows, G.cols, maxDepth);
+}
+
+/* ==================== Boot ==================== */
+load();
+loadLevel(G.level);
+window.addEventListener('resize', () => { setupCanvas(); render(); });
+
+// 开发调试验证当前关卡可解性
+(function verifyOnLoad(){
+  const sol = solveCurrentLevel(80);
+  if(sol) console.log(`Level ${G.level} solvable in ${sol.length} moves (optimal)`);
+  else console.warn(`Level ${G.level} may be unsolvable (solver did not find solution)`);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1640 @@
+require('dotenv').config();
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
+const axios = require('axios');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*' } });
+
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+app.use(express.json({ limit: '5mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+const PORT = process.env.PORT || 3000;
+const AGNES_BASE_URL = process.env.AGNES_BASE_URL || 'https://apihub.agnes-ai.com/v1';
+const AGNES_KEY = process.env.AGNES_API_KEY;
+const MIMO_BASE_URL = process.env.MIMO_BASE_URL || 'https://api.xiaomimimo.com/v1';
+const MIMO_KEY = process.env.MIMO_API_KEY;
+const CHAT_MODEL = process.env.CHAT_MODEL || 'agnes-2.0-flash';
+const IMAGE_MODEL = process.env.IMAGE_MODEL || 'agnes-image-2.1-flash';
+const TTS_MODEL = process.env.TTS_MODEL || 'mimo-v2.5-tts';
+const TTS_VOICE = process.env.TTS_VOICE || 'mimo_default';
+
+const ALL_GAMES = ['gomoku', 'pong', 'drawguess', 'tictactoe', 'connect4', 'draw2guess', 'rps', 'memory', 'dots', 'snake'];
+const rooms = new Map();
+const quickMatchQueue = new Map(); // gameType -> Map(socketId -> { socket, name })
+const users = new Map(); // id -> { id, account, password, name, createdAt, records }
+const accountIndex = new Map(); // account -> userId
+const nameIndex = new Map(); // name -> userId
+const LEADERBOARD_GAMES = ['memory', 'drawguess', 'draw2guess', '2048', 'snake'];
+
+// ---------- Utils ----------
+function generateRoomId() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+function generateUserId() {
+  return 'u' + Math.random().toString(36).substring(2, 10);
+}
+function generateSuffix(len = 4) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function now() { return Date.now(); }
+function getServerIp() {
+  const nets = require('os').networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) return net.address;
+    }
+  }
+  return 'localhost';
+}
+function getShareLink(room) {
+  const host = process.env.PUBLIC_HOST || `http://${getServerIp()}:${PORT}`;
+  return `${host}/games/${room.gameType}.html?room=${room.id}`;
+}
+
+// ---------- State Factories ----------
+// ---------- Accounts / Leaderboards ----------
+function sanitizeName(n) { return String(n || '').trim().slice(0, 16); }
+function isDefaultName(n) {
+  const s = String(n || '').trim();
+  return !s || s === 'Player' || s.startsWith('Player ') || s === 'OpenClaw' || s === 'Spectator';
+}
+function displayName(name, symbol) {
+  const base = sanitizeName(name) || `Player ${symbol}`;
+  if (isDefaultName(base)) return `${base}#${generateSuffix()}`;
+  return base;
+}
+function hashPassword(pwd) { return `plain:${pwd}`; }
+function createUser(account, password, name) {
+  if (accountIndex.has(account)) return { error: '账号已存在' };
+  const id = generateUserId();
+  const finalName = sanitizeName(name) || `Player#${generateSuffix()}`;
+  if (nameIndex.has(finalName)) return { error: '名字已被占用' };
+  const user = { id, account, password: String(password || ''), name: finalName, createdAt: now(), records: {} };
+  users.set(id, user);
+  accountIndex.set(account, id);
+  nameIndex.set(finalName, id);
+  return { user: publicUser(user) };
+}
+function publicUser(u) {
+  return { id: u.id, account: u.account, name: u.name, createdAt: u.createdAt };
+}
+function checkLogin(account, password) {
+  const id = accountIndex.get(account);
+  if (!id) return null;
+  const u = users.get(id);
+  if (!u || u.password !== String(password || '')) return null;
+  return u;
+}
+function renameUser(userId, newName) {
+  const u = users.get(userId);
+  if (!u) return { error: '用户不存在' };
+  const n = sanitizeName(newName);
+  if (!n) return { error: '名字不能为空' };
+  if (n === u.name) return { user: publicUser(u) };
+  if (nameIndex.has(n)) return { error: '名字已被占用' };
+  nameIndex.delete(u.name);
+  u.name = n;
+  nameIndex.set(n, u.id);
+  return { user: publicUser(u) };
+}
+function submitRecord(userId, game, score) {
+  const u = users.get(userId);
+  if (!u) return { error: '用户不存在' };
+  if (!LEADERBOARD_GAMES.includes(game)) return { error: '不支持的游戏' };
+  const s = Number(score);
+  if (!Number.isFinite(s)) return { error: '分数无效' };
+  if (!u.records[game]) u.records[game] = [];
+  u.records[game].push({ score: s, date: now() });
+  u.records[game].sort((a, b) => b.score - a.score);
+  u.records[game] = u.records[game].slice(0, 3);
+  return { success: true };
+}
+function getLeaderboard(game, limit = 20) {
+  if (!LEADERBOARD_GAMES.includes(game)) return [];
+  const list = [];
+  for (const u of users.values()) {
+    const recs = u.records[game] || [];
+    if (recs.length) list.push({ name: u.name, score: recs[0].score, date: recs[0].date });
+  }
+  list.sort((a, b) => b.score - a.score);
+  return list.slice(0, limit);
+}
+function getUserRecords(userId) {
+  const u = users.get(userId);
+  if (!u) return {};
+  const out = {};
+  for (const g of LEADERBOARD_GAMES) out[g] = (u.records[g] || []).slice();
+  return out;
+}
+function getUserByToken(token) { return users.get(token) || null; }
+
+function createBoard(rows, cols, val = 0) {
+  return Array(rows).fill(0).map(() => Array(cols).fill(val));
+}
+function initialGomokuState() {
+  return { board: createBoard(15, 15), currentPlayer: 1, firstPlayer: 1, gameOver: false, winner: null, lastMove: null, status: 'waiting' };
+}
+function initialPongState() {
+  return { status: 'waiting', scores: [0, 0], paddles: [{ x: 0.5 }, { x: 0.5 }], ball: { x: 0.5, y: 0.5, vx: 0, vy: 0 }, winner: null, server: null, targetScore: 5, lastUpdate: now() };
+}
+function resetPongBall(s, dir = 1) {
+  const speed = 0.012 + Math.random() * 0.004;
+  const angle = (Math.random() - 0.5) * 0.6;
+  s.ball = { x: 0.5, y: 0.5, vx: speed * Math.sin(angle), vy: speed * (dir || (Math.random() > 0.5 ? 1 : -1)) };
+}
+function initialTictactoeState() {
+  return { board: createBoard(3, 3), currentPlayer: 1, firstPlayer: 1, gameOver: false, winner: null, moves: 0, status: 'waiting' };
+}
+function initialConnect4State() {
+  return { board: createBoard(6, 7), currentPlayer: 1, firstPlayer: 1, gameOver: false, winner: null, lastMove: null, status: 'waiting' };
+}
+
+const MEMORY_ICONS = ['🍎','🍌','🐱','🐶','🚗','✈️','🎸','🏀'];
+function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+function initialRpsState() {
+  return { status: 'waiting', round: 1, scores: [0, 0], choices: { 1: null, 2: null }, result: null, winner: null, target: 2 };
+}
+function initialMemoryState() {
+  const icons = shuffle([...MEMORY_ICONS, ...MEMORY_ICONS]);
+  return { status: 'waiting', cards: icons.map((icon, i) => ({ id: i, icon, flipped: false, matched: false })), currentPlayer: 1, firstPlayer: 1, scores: [0, 0], flipped: [], winner: null, message: '' };
+}
+function resetMemoryCards(state) { state.cards = shuffle([...MEMORY_ICONS, ...MEMORY_ICONS]).map((icon, i) => ({ id: i, icon, flipped: false, matched: false })); }
+function initialDotsState() {
+  // 4x4 dots => 3x3 boxes. edges[dir][r][c]: dir 0 horizontal, 1 vertical. boxes[r][c]=0|1|2.
+  return { status: 'waiting', currentPlayer: 1, firstPlayer: 1, scores: [0, 0], edges: { 0: createBoard(4, 3, 0), 1: createBoard(3, 4, 0) }, boxes: createBoard(3, 3, 0), winner: null, moves: 0, totalLines: 24 };
+}
+
+const SNAKE_GRID = 20;
+const SNAKE_MAPS = {
+  empty: [],
+  box: [{x:5,y:5},{x:6,y:5},{x:7,y:5},{x:8,y:5},{x:9,y:5},{x:10,y:5},{x:11,y:5},{x:12,y:5},{x:13,y:5},{x:14,y:5},
+        {x:5,y:14},{x:6,y:14},{x:7,y:14},{x:8,y:14},{x:9,y:14},{x:10,y:14},{x:11,y:14},{x:12,y:14},{x:13,y:14},{x:14,y:14},
+        {x:5,y:6},{x:5,y:7},{x:5,y:8},{x:5,y:9},{x:5,y:10},{x:5,y:11},{x:5,y:12},{x:5,y:13},
+        {x:14,y:6},{x:14,y:7},{x:14,y:8},{x:14,y:9},{x:14,y:10},{x:14,y:11},{x:14,y:12},{x:14,y:13}],
+  cross: [{x:9,y:0},{x:9,y:1},{x:9,y:2},{x:9,y:3},{x:9,y:4},{x:9,y:15},{x:9,y:16},{x:9,y:17},{x:9,y:18},{x:9,y:19},
+          {x:10,y:0},{x:10,y:1},{x:10,y:2},{x:10,y:3},{x:10,y:4},{x:10,y:15},{x:10,y:16},{x:10,y:17},{x:10,y:18},{x:10,y:19},
+          {x:0,y:9},{x:1,y:9},{x:2,y:9},{x:3,y:9},{x:4,y:9},{x:15,y:9},{x:16,y:9},{x:17,y:9},{x:18,y:9},{x:19,y:9},
+          {x:0,y:10},{x:1,y:10},{x:2,y:10},{x:3,y:10},{x:4,y:10},{x:15,y:10},{x:16,y:10},{x:17,y:10},{x:18,y:10},{x:19,y:10}],
+  maze: [{x:2,y:2},{x:3,y:2},{x:4,y:2},{x:5,y:2},{x:6,y:2},{x:7,y:2},{x:8,y:2},
+         {x:11,y:2},{x:12,y:2},{x:13,y:2},{x:14,y:2},{x:15,y:2},{x:16,y:2},{x:17,y:2},
+         {x:2,y:5},{x:3,y:5},{x:4,y:5},{x:5,y:5},{x:6,y:5},{x:7,y:5},{x:8,y:5},
+         {x:11,y:5},{x:12,y:5},{x:13,y:5},{x:14,y:5},{x:15,y:5},{x:16,y:5},{x:17,y:5},
+         {x:2,y:8},{x:3,y:8},{x:4,y:8},{x:5,y:8},{x:6,y:8},{x:7,y:8},{x:8,y:8},{x:9,y:8},{x:10,y:8},{x:11,y:8},{x:12,y:8},{x:13,y:8},{x:14,y:8},{x:15,y:8},{x:16,y:8},{x:17,y:8},
+         {x:2,y:11},{x:3,y:11},{x:4,y:11},{x:5,y:11},{x:6,y:11},{x:7,y:11},{x:8,y:11},{x:9,y:11},{x:10,y:11},{x:11,y:11},{x:12,y:11},{x:13,y:11},{x:14,y:11},{x:15,y:11},{x:16,y:11},{x:17,y:11},
+         {x:2,y:14},{x:3,y:14},{x:4,y:14},{x:5,y:14},{x:6,y:14},{x:7,y:14},{x:8,y:14},
+         {x:11,y:14},{x:12,y:14},{x:13,y:14},{x:14,y:14},{x:15,y:14},{x:16,y:14},{x:17,y:14},
+         {x:2,y:17},{x:3,y:17},{x:4,y:17},{x:5,y:17},{x:6,y:17},{x:7,y:17},{x:8,y:17},
+         {x:11,y:17},{x:12,y:17},{x:13,y:17},{x:14,y:17},{x:15,y:17},{x:16,y:17},{x:17,y:17}]
+};
+function getMapWalls(name) { return SNAKE_MAPS[name] || SNAKE_MAPS.empty; }
+function initialSnakeState() {
+  return { status: 'waiting', map: 'empty', walls: [], snakes: { 1: null, 2: null }, dirs: { 1: { x: 1, y: 0 }, 2: { x: -1, y: 0 } }, nextDirs: { 1: { x: 1, y: 0 }, 2: { x: -1, y: 0 } }, foods: [], scores: { 1: 0, 2: 0 }, lives: { 1: 3, 2: 3 }, ready: { 1: false, 2: false }, dead: { 1: false, 2: false }, respawnAt: { 1: 0, 2: 0 }, winner: null, message: '' };
+}
+function startPositions(symbol) {
+  if (symbol === 1) return [{x:2,y:2},{x:1,y:2},{x:0,y:2}];
+  return [{x:SNAKE_GRID-3,y:SNAKE_GRID-3},{x:SNAKE_GRID-2,y:SNAKE_GRID-3},{x:SNAKE_GRID-1,y:SNAKE_GRID-3}];
+}
+function spawnSnake(symbol, mapName) {
+  const segs = startPositions(symbol);
+  const walls = getMapWalls(mapName);
+  // if spawn blocked by walls, shift slightly
+  if (walls.some(w => segs.some(s => s.x===w.x && s.y===w.y))) {
+    segs.forEach(s => { s.x = (s.x + 2) % SNAKE_GRID; s.y = (s.y + 2) % SNAKE_GRID; });
+  }
+  return segs;
+}
+
+function startGameIfReady(room) {
+  if (room.players.length === 2 && room.state.status === 'waiting' && !room.state.gameOver) {
+    room.state.status = room.gameType === 'rps' ? 'choosing' : 'playing';
+    room.lastActivity = now();
+  }
+}
+
+const WORD_POOL = [
+  { word: '守株待兔', pinyin: 'shou zhu dai tu', category: '成语', meaning: 'a farmer waiting by a tree stump hoping another hare will crash into it', answers: ['守株待兔','shou zhu dai tu'] },
+  { word: '画蛇添足', pinyin: 'hua she tian zu', category: '成语', meaning: 'drawing a snake and adding feet, ruining it by overdoing', answers: ['画蛇添足','hua she tian zu'] },
+  { word: '亡羊补牢', pinyin: 'wang yang bu lao', category: '成语', meaning: 'mending the pen after sheep are lost, it is not too late', answers: ['亡羊补牢','wang yang bu lao'] },
+  { word: '掩耳盗铃', pinyin: 'yan er dao ling', category: '成语', meaning: 'covering ones ears while stealing a bell', answers: ['掩耳盗铃','yan er dao ling'] },
+  { word: '刻舟求剑', pinyin: 'ke zhou qiu jian', category: '成语', meaning: 'marking a boat to find a dropped sword', answers: ['刻舟求剑','ke zhou qiu jian'] },
+  { word: '井底之蛙', pinyin: 'jing di zhi wa', category: '成语', meaning: 'a frog at the bottom of a well with a narrow view', answers: ['井底之蛙','jing di zhi wa'] },
+  { word: '狐假虎威', pinyin: 'hu jia hu wei', category: '成语', meaning: 'a fox borrowing the tigers fierceness', answers: ['狐假虎威','hu jia hu wei'] },
+  { word: '叶公好龙', pinyin: 'ye gong hao long', category: '成语', meaning: 'Lord Ye who claims to love dragons but is frightened by one', answers: ['叶公好龙','ye gong hao long'] },
+  { word: '对牛弹琴', pinyin: 'dui niu tan qin', category: '成语', meaning: 'playing the lute to a cow, casting pearls before swine', answers: ['对牛弹琴','dui niu tan qin'] },
+  { word: '塞翁失马', pinyin: 'sai weng shi ma', category: '成语', meaning: 'an old man lost his horse but it turned out to be a blessing', answers: ['塞翁失马','sai weng shi ma'] },
+  { word: '指鹿为马', pinyin: 'zhi lu wei ma', category: '成语', meaning: 'pointing at a deer and calling it a horse', answers: ['指鹿为马','zhi lu wei ma'] },
+  { word: '杯弓蛇影', pinyin: 'bei gong she ying', category: '成语', meaning: 'mistaking the reflection of a bow in the cup for a snake', answers: ['杯弓蛇影','bei gong she ying'] },
+  { word: '自相矛盾', pinyin: 'zi xiang mao dun', category: '成语', meaning: 'attacking ones own shield with ones spear, self-contradictory', answers: ['自相矛盾','zi xiang mao dun'] },
+  { word: '拔苗助长', pinyin: 'ba miao zhu zhang', category: '成语', meaning: 'pulling up seedlings to help them grow', answers: ['拔苗助长','ba miao zhu zhang'] },
+  { word: '滥竽充数', pinyin: 'lan yu chong shu', category: '成语', meaning: 'passing oneself off as one of the players in an ensemble', answers: ['滥竽充数','lan yu chong shu'] }
+];
+function pickWord() { return WORD_POOL[Math.floor(Math.random() * WORD_POOL.length)]; }
+function normalizeGuess(g) { return String(g || '').trim().toLowerCase(); }
+
+const DRAW2_WORDS = [
+  { word: '苹果', pinyin: 'ping guo', category: '水果', answers: ['苹果','apple'] },
+  { word: '香蕉', pinyin: 'xiang jiao', category: '水果', answers: ['香蕉','banana'] },
+  { word: '猫', pinyin: 'mao', category: '动物', answers: ['猫','cat','kitty'] },
+  { word: '狗', pinyin: 'gou', category: '动物', answers: ['狗','dog','puppy'] },
+  { word: '汽车', pinyin: 'qi che', category: '交通工具', answers: ['汽车','car','automobile'] },
+  { word: '飞机', pinyin: 'fei ji', category: '交通工具', answers: ['飞机','plane','airplane'] },
+  { word: '电脑', pinyin: 'dian nao', category: '物品', answers: ['电脑','computer','pc'] },
+  { word: '手机', pinyin: 'shou ji', category: '物品', answers: ['手机','phone','mobile'] },
+  { word: '披萨', pinyin: 'pi sa', category: '食物', answers: ['披萨','pizza'] },
+  { word: '蛋糕', pinyin: 'dan gao', category: '食物', answers: ['蛋糕','cake'] },
+  { word: '太阳', pinyin: 'tai yang', category: '自然', answers: ['太阳','sun'] },
+  { word: '月亮', pinyin: 'yue liang', category: '自然', answers: ['月亮','moon'] },
+  { word: '吉他', pinyin: 'ji ta', category: '乐器', answers: ['吉他','guitar'] },
+  { word: '篮球', pinyin: 'lan qiu', category: '运动', answers: ['篮球','basketball'] },
+  { word: '书', pinyin: 'shu', category: '物品', answers: ['书','book'] }
+];
+function pickDraw2Word() { return DRAW2_WORDS[Math.floor(Math.random() * DRAW2_WORDS.length)]; }
+
+function isCorrectGuess(wordObj, guess) {
+  const g = normalizeGuess(guess);
+  if (!g) return false;
+  if (g === wordObj.word.toLowerCase()) return true;
+  if (g === wordObj.zh) return true;
+  if (wordObj.answers && wordObj.answers.some(a => a.toLowerCase() === g)) return true;
+  return false;
+}
+
+// Pre-generate image cache
+const IMAGE_CACHE_TARGET = 5;
+let imageCache = [];
+let imageCacheBusy = false;
+async function refillImageCache() {
+  if (imageCacheBusy) return;
+  imageCacheBusy = true;
+  while (imageCache.length < IMAGE_CACHE_TARGET) {
+    const wordObj = pickWord();
+    const imageUrl = await generateImage(wordObj);
+    if (imageUrl) imageCache.push({ wordObj, imageUrl });
+  }
+  imageCacheBusy = false;
+}
+function takeCachedImage() {
+  const item = imageCache.shift();
+  if (item) refillImageCache();
+  return item;
+}
+
+function initialDrawguessState() {
+  return { status: 'waiting', round: 1, maxRounds: 5, secretWord: null, imageUrl: null, category: '', guesses: [], scores: { 1: 0, 2: 0 }, winner: null, message: '', audio: null, loading: false };
+}
+function initialDraw2GuessState() {
+  return { status: 'waiting', round: 1, maxRounds: 6, secretWord: null, category: '', drawer: 1, strokes: [], guesses: [], scores: { 1: 0, 2: 0 }, winner: null, message: '' };
+}
+
+// ---------- Room Management ----------
+const QUICK_MATCH_RESERVE_MS = 30000;
+
+function createQuickMatchRoom(gameType) {
+  const roomId = generateRoomId();
+  const room = {
+    id: roomId,
+    gameType,
+    players: [],
+    spectators: [],
+    messages: [],
+    createdAt: now(),
+    lastActivity: now(),
+    quickMatch: true,
+    reservedUntil: now() + QUICK_MATCH_RESERVE_MS,
+    state: gameType === 'gomoku' ? initialGomokuState()
+         : gameType === 'pong' ? initialPongState()
+         : gameType === 'drawguess' ? initialDrawguessState()
+         : gameType === 'tictactoe' ? initialTictactoeState()
+         : gameType === 'connect4' ? initialConnect4State()
+         : gameType === 'draw2guess' ? initialDraw2GuessState()
+         : gameType === 'rps' ? initialRpsState()
+         : gameType === 'memory' ? initialMemoryState()
+         : gameType === 'dots' ? initialDotsState()
+         : gameType === 'snake' ? initialSnakeState()
+         : initialGomokuState(),
+    loop: null
+  };
+  rooms.set(roomId, room);
+  return room;
+}
+
+function createRoom(gameType, hostName, hostSocketId) {
+  const roomId = generateRoomId();
+  const room = {
+    id: roomId,
+    gameType,
+    players: [{ socketId: hostSocketId, name: displayName(hostName, 1), symbol: 1, isHost: true, connected: true }],
+    spectators: [],
+    messages: [],
+    createdAt: now(),
+    lastActivity: now(),
+    state: gameType === 'gomoku' ? initialGomokuState()
+         : gameType === 'pong' ? initialPongState()
+         : gameType === 'drawguess' ? initialDrawguessState()
+         : gameType === 'tictactoe' ? initialTictactoeState()
+         : gameType === 'connect4' ? initialConnect4State()
+         : gameType === 'draw2guess' ? initialDraw2GuessState()
+         : gameType === 'rps' ? initialRpsState()
+         : gameType === 'memory' ? initialMemoryState()
+         : gameType === 'dots' ? initialDotsState()
+         : gameType === 'snake' ? initialSnakeState()
+         : initialGomokuState(),
+    loop: null
+  };
+  rooms.set(roomId, room);
+  return room;
+}
+function joinRoomAsPlayer(room, socketId, playerName) {
+  if (room.players.length >= 2) return null;
+  const symbol = room.players.length + 1;
+  const isHost = room.players.length === 0;
+  const player = { socketId, name: displayName(playerName, symbol), symbol, isHost, connected: true };
+  room.players.push(player);
+  return player;
+}
+function joinRoomAsSpectator(room, socketId, playerName) {
+  const spec = { socketId, name: displayName(playerName, `S${room.spectators.length + 1}`) };
+  room.spectators.push(spec);
+  return spec;
+}
+function removeFromRoom(room, socketId) {
+  room.players = room.players.filter(p => p.socketId !== socketId);
+  room.spectators = room.spectators.filter(s => s.socketId !== socketId);
+  const onlyBots = room.players.length > 0 && room.players.every(p => p.isBot);
+  if ((room.players.length === 0 && room.spectators.length === 0) || onlyBots) {
+    stopGameLoop(room);
+    rooms.delete(room.id);
+    return true;
+  }
+  if (room.players.length > 0 && !room.players[0].isHost) {
+    room.players[0].isHost = true;
+    room.players[0].symbol = 1;
+    if (room.players[1]) room.players[1].symbol = 2;
+  }
+  return false;
+}
+function getPlayer(room, socketId) { return room.players.find(p => p.socketId === socketId); }
+function publicRoomState(room) {
+  const state = JSON.parse(JSON.stringify(room.state));
+  delete state.secretWord;
+  return { roomId: room.id, gameType: room.gameType, players: room.players.map(p => ({ name: p.name, symbol: p.symbol, isHost: p.isHost })), spectators: room.spectators.length, state };
+}
+function emitRoom(room, event, payload) { io.to(room.id).emit(event, payload); }
+function broadcastState(room) { emitRoom(room, `${room.gameType}:state`, publicRoomState(room)); }
+
+function removeFromQuickMatch(socket) {
+  for (const queue of quickMatchQueue.values()) queue.delete(socket.id);
+}
+function findQuickMatch(gameType, socket, playerName) {
+  if (!ALL_GAMES.includes(gameType)) return;
+  if (socket.roomId) { socket.emit('error', { message: '你已经在房间中，无法匹配' }); return; }
+  removeFromQuickMatch(socket);
+  let queue = quickMatchQueue.get(gameType);
+  if (!queue) { queue = new Map(); quickMatchQueue.set(gameType, queue); }
+  for (const [sid, entry] of queue) {
+    const other = entry.socket;
+    if (other.connected && other.id !== socket.id) {
+      queue.delete(sid);
+      const room = createQuickMatchRoom(gameType);
+      const p1 = joinRoomAsPlayer(room, other.id, entry.name);
+      const p2 = joinRoomAsPlayer(room, socket.id, playerName);
+      if (!p1 || !p2) { rooms.delete(room.id); return; }
+      other.join(room.id); other.roomId = room.id; other.playerSymbol = p1.symbol;
+      socket.join(room.id); socket.roomId = room.id; socket.playerSymbol = p2.symbol;
+      const payload = { roomId: room.id, gameType, link: getShareLink(room) };
+      socket.emit('quickMatch:found', payload);
+      other.emit('quickMatch:found', payload);
+      if (['gomoku','tictactoe','connect4','rps','memory','dots'].includes(gameType)) startGameIfReady(room);
+      if (gameType === 'pong') startPongIfReady(room);
+      if (gameType === 'snake') broadcastState(room);
+      return;
+    }
+  }
+  queue.set(socket.id, { socket, name: playerName || 'Player' });
+  socket.emit('quickMatch:waiting', { gameType });
+}
+
+// ---------- Gomoku ----------
+function checkGomokuWin(board, row, col, player) {
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for (const [dr, dc] of dirs) {
+    let count = 1;
+    for (let i = 1; i < 5; i++) { const r=row+dr*i,c=col+dc*i; if (r>=0&&r<15&&c>=0&&c<15&&board[r][c]===player) count++; else break; }
+    for (let i = 1; i < 5; i++) { const r=row-dr*i,c=col-dc*i; if (r>=0&&r<15&&c>=0&&c<15&&board[r][c]===player) count++; else break; }
+    if (count >= 5) return true;
+  }
+  return false;
+}
+function gomokuDraw(board) { for (let r=0;r<15;r++) for(let c=0;c<15;c++) if(board[r][c]===0) return false; return true; }
+function handleGomokuMove(room, socketId, { row, col }) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'playing' || room.state.gameOver || room.state.currentPlayer !== player.symbol) return;
+  row = parseInt(row, 10); col = parseInt(col, 10);
+  if (Number.isNaN(row)||row<0||row>=15||Number.isNaN(col)||col<0||col>=15||room.state.board[row][col]!==0) return;
+  room.state.board[row][col] = player.symbol;
+  room.state.lastMove = { row, col, symbol: player.symbol };
+  if (checkGomokuWin(room.state.board, row, col, player.symbol)) { room.state.gameOver=true; room.state.winner=player.symbol; room.state.status='ended'; }
+  else if (gomokuDraw(room.state.board)) { room.state.gameOver=true; room.state.winner=null; room.state.status='ended'; }
+  else room.state.currentPlayer = room.state.currentPlayer===1?2:1;
+  room.lastActivity = now();
+  broadcastState(room);
+}
+function resetGomoku(room, socketId) {
+  const p=getPlayer(room,socketId); if(!p||!p.isHost) return;
+  const nextFirst = room.state.firstPlayer === 1 ? 2 : 1;
+  room.state=initialGomokuState(); room.state.firstPlayer=nextFirst; room.state.currentPlayer=nextFirst;
+  room.lastActivity=now(); broadcastState(room);
+}
+
+// ---------- Pong (Vertical) ----------
+const PONG = { paddleW: 0.22, paddleH: 0.025, paddleOff: 0.04, ballR: 0.018, maxSpeed: 0.04, tickMs: 33 };
+function startPongIfReady(room) {
+  if (room.gameType !== 'pong') return;
+  if (room.players.length === 2 && room.state.status === 'waiting') {
+    room.state.status = 'waitingServe';
+    room.state.server = Math.random() > 0.5 ? 1 : 2;
+    room.state.ball = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
+    startGameLoop(room, () => updatePong(room));
+  }
+}
+function updatePong(room) {
+  const s = room.state;
+  if (s.status !== 'playing') return;
+  let { x, y, vx, vy } = s.ball;
+  x += vx; y += vy;
+  if (x - PONG.ballR < 0) { x = PONG.ballR; vx = Math.abs(vx); }
+  if (x + PONG.ballR > 1) { x = 1 - PONG.ballR; vx = -Math.abs(vx); }
+  const p1 = s.paddles[0].x, p2 = s.paddles[1].x;
+  const topY = PONG.paddleOff + PONG.paddleH;
+  const botY = 1 - PONG.paddleOff - PONG.paddleH;
+  if (y - PONG.ballR <= topY && y > PONG.paddleOff && x >= p1 - PONG.paddleW/2 && x <= p1 + PONG.paddleW/2) {
+    const hit = (x - p1) / (PONG.paddleW / 2);
+    vy = Math.abs(vy) * 1.04;
+    vx += hit * 0.015;
+    y = topY + PONG.ballR;
+  }
+  if (y + PONG.ballR >= botY && y < 1 - PONG.paddleOff && x >= p2 - PONG.paddleW/2 && x <= p2 + PONG.paddleW/2) {
+    const hit = (x - p2) / (PONG.paddleW / 2);
+    vy = -Math.abs(vy) * 1.04;
+    vx += hit * 0.015;
+    y = botY - PONG.ballR;
+  }
+  const speed = Math.hypot(vx, vy);
+  if (speed > PONG.maxSpeed) { const r=PONG.maxSpeed/speed; vx*=r; vy*=r; }
+  if (y < 0) {
+    s.scores[1]++;
+    if (s.scores[1] >= s.targetScore) { s.status='ended'; s.winner=2; }
+    else { s.status='waitingServe'; s.server=2; s.ball={x:0.5,y:0.5,vx:0,vy:0}; x=s.ball.x; y=s.ball.y; vx=s.ball.vx; vy=s.ball.vy; }
+  } else if (y > 1) {
+    s.scores[0]++;
+    if (s.scores[0] >= s.targetScore) { s.status='ended'; s.winner=1; }
+    else { s.status='waitingServe'; s.server=1; s.ball={x:0.5,y:0.5,vx:0,vy:0}; x=s.ball.x; y=s.ball.y; vx=s.ball.vx; vy=s.ball.vy; }
+  }
+  s.ball = { x, y, vx, vy };
+  s.lastUpdate = now();
+  emitRoom(room, 'pong:state', publicRoomState(room));
+  room.lastActivity = now();
+}
+function handlePongPaddle(room, socketId, { x }) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status === 'ended') return;
+  let val = parseFloat(x);
+  if (Number.isNaN(val)) return;
+  val = Math.max(PONG.paddleW/2, Math.min(1 - PONG.paddleW/2, val));
+  room.state.paddles[player.symbol-1].x = val;
+  room.lastActivity = now();
+}
+function handlePongServe(room, socketId) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'waitingServe' || room.state.server !== player.symbol) return;
+  room.state.status = 'playing';
+  resetPongBall(room.state, room.state.server === 1 ? 1 : -1);
+  room.lastActivity = now();
+  emitRoom(room, 'pong:state', publicRoomState(room));
+}
+function resetPong(room, socketId) {
+  const p=getPlayer(room,socketId); if(!p||!p.isHost) return;
+  stopGameLoop(room); room.state=initialPongState(); room.lastActivity=now(); broadcastState(room); startPongIfReady(room);
+}
+
+// ---------- Tic-Tac-Toe ----------
+function checkTttWin(board, player) {
+  const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  for (const [a,b,c] of lines) {
+    const ar=Math.floor(a/3), ac=a%3, br=Math.floor(b/3), bc=b%3, cr=Math.floor(c/3), cc=c%3;
+    if (board[ar][ac]===player && board[br][bc]===player && board[cr][cc]===player) return true;
+  }
+  return false;
+}
+function handleTictactoeMove(room, socketId, { row, col }) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'playing' || room.state.gameOver || room.state.currentPlayer !== player.symbol) return;
+  row = parseInt(row, 10); col = parseInt(col, 10);
+  if (Number.isNaN(row)||row<0||row>2||Number.isNaN(col)||col<0||col>2||room.state.board[row][col]!==0) return;
+  room.state.board[row][col] = player.symbol;
+  room.state.moves++;
+  if (checkTttWin(room.state.board, player.symbol)) { room.state.gameOver=true; room.state.winner=player.symbol; }
+  else if (room.state.moves === 9) { room.state.gameOver=true; room.state.winner=null; }
+  else room.state.currentPlayer = room.state.currentPlayer===1?2:1;
+  room.lastActivity = now(); broadcastState(room);
+}
+function resetTictactoe(room, socketId) {
+  const p=getPlayer(room,socketId); if(!p) return;
+  if(!p.isHost && !room.state.gameOver && room.state.status !== 'ended') return;
+  const nextFirst = room.state.firstPlayer === 1 ? 2 : 1;
+  room.state=initialTictactoeState(); room.state.firstPlayer=nextFirst; room.state.currentPlayer=nextFirst;
+  room.lastActivity=now(); broadcastState(room);
+}
+
+// ---------- Connect Four ----------
+function connect4Drop(room, socketId, { col }) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'playing' || room.state.gameOver || room.state.currentPlayer !== player.symbol) return;
+  col = parseInt(col, 10);
+  if (Number.isNaN(col)||col<0||col>=7||room.state.board[0][col]!==0) return;
+  let row = 5;
+  while (row >= 0 && room.state.board[row][col] !== 0) row--;
+  if (row < 0) return;
+  room.state.board[row][col] = player.symbol;
+  room.state.lastMove = { row, col, symbol: player.symbol };
+  if (checkConnect4Win(room.state.board, row, col, player.symbol)) { room.state.gameOver=true; room.state.winner=player.symbol; }
+  else if (room.state.board.every(r=>r.every(c=>c!==0))) { room.state.gameOver=true; room.state.winner=null; }
+  else room.state.currentPlayer = room.state.currentPlayer===1?2:1;
+  room.lastActivity = now(); broadcastState(room);
+}
+function checkConnect4Win(board, row, col, player) {
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for (const [dr,dc] of dirs) {
+    let count=1;
+    for (let i=1;i<4;i++){const r=row+dr*i,c=col+dc*i;if(r>=0&&r<6&&c>=0&&c<7&&board[r][c]===player)count++;else break;}
+    for (let i=1;i<4;i++){const r=row-dr*i,c=col-dc*i;if(r>=0&&r<6&&c>=0&&c<7&&board[r][c]===player)count++;else break;}
+    if (count>=4) return true;
+  }
+  return false;
+}
+function resetConnect4(room, socketId) {
+  const p=getPlayer(room,socketId); if(!p) return;
+  if(!p.isHost && !room.state.gameOver && room.state.status !== 'ended') return;
+  const nextFirst = room.state.firstPlayer === 1 ? 2 : 1;
+  room.state=initialConnect4State(); room.state.firstPlayer=nextFirst; room.state.currentPlayer=nextFirst;
+  room.lastActivity=now(); broadcastState(room);
+}
+
+// ---------- Draw2Guess (Human Draw) ----------
+function draw2WordObj() {
+  const w = pickDraw2Word();
+  return { ...w, zh: w.word };
+}
+function publicDraw2State(room) {
+  const state = JSON.parse(JSON.stringify(room.state));
+  delete state.secretWord;
+  return { roomId: room.id, gameType: room.gameType, players: room.players.map(p => ({ name: p.name, symbol: p.symbol, isHost: p.isHost })), spectators: room.spectators.length, state };
+}
+function emitDraw2State(room) { io.to(room.id).emit('draw2guess:state', publicDraw2State(room)); }
+function emitDraw2Word(room) {
+  const wordObj = DRAW2_WORDS.find(w => w.word === room.state.secretWord);
+  room.players.forEach(p => {
+    if (p.symbol === room.state.drawer) io.to(p.socketId).emit('draw2guess:word', { word: room.state.secretWord, category: room.state.category });
+  });
+}
+async function startDraw2GuessRound(room) {
+  const wordObj = draw2WordObj();
+  room.state.secretWord = wordObj.word;
+  room.state.category = wordObj.category;
+  room.state.strokes = [];
+  room.state.guesses = [];
+  room.state.message = '';
+  room.state.winner = null;
+  room.state.status = 'drawing';
+  room.lastActivity = now();
+  emitDraw2State(room);
+  emitDraw2Word(room);
+}
+function handleDraw2GuessStroke(room, socketId, { stroke }) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'drawing' || player.symbol !== room.state.drawer) return;
+  if (!Array.isArray(stroke)) return;
+  if (stroke.length === 0) room.state.strokes = [];
+  else room.state.strokes.push(stroke);
+  room.lastActivity = now();
+  emitDraw2State(room);
+}
+async function judgeGuess(wordObj, guess) {
+  if (!AGNES_KEY) return { score: 0, reason: 'AI 裁判未启用' };
+  try {
+    const res = await axios.post(`${AGNES_BASE_URL}/chat/completions`, {
+      model: CHAT_MODEL,
+      messages: [
+        { role: 'system', content: 'You are a judge for a Chinese drawing-guessing game. Compare the player guess to the target word. Rate semantic similarity from 0 to 100. Return only JSON: {"score":number,"reason":"short Chinese reason"}.' },
+        { role: 'user', content: `Target word: ${wordObj.word} (category: ${wordObj.category}). Player guess: ${guess}. Score 0-100.` }
+      ],
+      temperature: 0.5,
+      response_format: { type: 'json_object' }
+    }, { headers: { Authorization: `Bearer ${AGNES_KEY}`, 'Content-Type': 'application/json' }, timeout: 20000 });
+    const parsed = JSON.parse(res.data.choices[0].message.content || '{}');
+    return { score: Math.max(0, Math.min(100, parseInt(parsed.score, 10) || 0)), reason: String(parsed.reason || '') };
+  } catch (e) { console.error('Judge failed', e.message); return { score: 0, reason: '裁判出错' }; }
+}
+async function handleDraw2GuessGuess(room, socketId, { guess }) {
+  if (room.state.status !== 'drawing' && room.state.status !== 'guessing') return;
+  const player = getPlayer(room, socketId);
+  if (!player || player.symbol === room.state.drawer) return;
+  const g = String(guess || '').trim();
+  if (!g) return;
+  const wordObj = DRAW2_WORDS.find(w => w.word === room.state.secretWord);
+  const exact = isCorrectGuess(wordObj, g);
+  room.state.guesses.push({ player: player.name, guess: g, symbol: player.symbol });
+  room.lastActivity = now();
+  if (exact) {
+    room.state.scores[player.symbol] = (room.state.scores[player.symbol] || 0) + 100;
+    room.state.winner = player.symbol;
+    room.state.status = 'ended';
+    room.state.message = `🎉 ${player.name} 完全猜中！答案是 ${room.state.secretWord}，+100 分`;
+    emitDraw2State(room);
+    return;
+  }
+  room.state.status = 'judging';
+  emitDraw2State(room);
+  const judgement = await judgeGuess(wordObj, g);
+  const bonus = Math.round(judgement.score / 2); // partial score
+  room.state.scores[player.symbol] = (room.state.scores[player.symbol] || 0) + bonus;
+  room.state.status = 'ended';
+  room.state.winner = player.symbol;
+  room.state.message = `答案：${room.state.secretWord}。"${g}" 相似度 ${judgement.score}，${judgement.reason || ''} +${bonus} 分`;
+  emitDraw2State(room);
+}
+async function nextDraw2GuessRound(room, socketId) {
+  const p = getPlayer(room, socketId); if (!p || !p.isHost) return;
+  if (room.state.round >= room.state.maxRounds && room.state.status === 'ended') {
+    const s1 = room.state.scores[1] || 0, s2 = room.state.scores[2] || 0;
+    room.state.status = 'finished';
+    room.state.message = `🏆 结束！P1 ${s1} : P2 ${s2}`;
+    emitDraw2State(room); return;
+  }
+  room.state.round++;
+  room.state.drawer = room.state.drawer === 1 ? 2 : 1;
+  await startDraw2GuessRound(room);
+}
+function resetDraw2Guess(room, socketId) {
+  const p = getPlayer(room, socketId); if (!p) return;
+  if(!p.isHost && room.state.status !== 'ended' && room.state.status !== 'finished') return;
+  room.state = initialDraw2GuessState(); room.lastActivity = now();
+  emitDraw2State(room);
+}
+
+// ---------- Drawguess (AI Image) ----------
+async function generateImage(wordObj) {
+  if (!AGNES_KEY) return null;
+  try {
+    const subject = wordObj.meaning || wordObj.word;
+    const prompt = `A simple cute cartoon illustration depicting: ${subject}. Centered on a clean white background, no text, no letters, no Chinese characters, minimal style.`;
+    const res = await axios.post(`${AGNES_BASE_URL}/images/generations`, {
+      model: IMAGE_MODEL, prompt, n: 1, size: '512x512'
+    }, { headers: { Authorization: `Bearer ${AGNES_KEY}`, 'Content-Type': 'application/json' }, timeout: 60000 });
+    return res.data.data[0]?.url || null;
+  } catch (e) { console.error('Image generation failed:', e.message); return null; }
+}
+async function synthesize(text, voice = TTS_VOICE, model = TTS_MODEL) {
+  if (!MIMO_KEY) return null;
+  try {
+    const res = await axios.post(`${MIMO_BASE_URL}/chat/completions`, {
+      model, messages: [{ role: 'user', content: '用自然、活泼的中文语调朗读。' }, { role: 'assistant', content: text }],
+      audio: { format: 'wav', voice }
+    }, { headers: { 'api-key': MIMO_KEY, 'Content-Type': 'application/json' }, timeout: 25000 });
+    const audio = res.data.choices[0].message.audio;
+    return audio ? `data:audio/wav;base64,${audio.data}` : null;
+  } catch (e) { console.error('TTS failed:', e.message); return null; }
+}
+async function startDrawguessRound(room) {
+  let wordObj, imageUrl;
+  const cached = takeCachedImage();
+  if (cached) { wordObj = cached.wordObj; imageUrl = cached.imageUrl; }
+  else { wordObj = pickWord(); imageUrl = null; }
+  room.state.secretWord = wordObj.word;
+  room.state.category = wordObj.category;
+  room.state.guesses = [];
+  room.state.message = '';
+  room.state.winner = null;
+  room.state.status = 'playing';
+  room.state.loading = true;
+  room.state.audio = null;
+  broadcastState(room);
+  if (!imageUrl) imageUrl = await generateImage(wordObj);
+  room.state.imageUrl = imageUrl;
+  room.state.loading = false;
+  room.state.audio = await synthesize(`请猜这个成语`);
+  room.lastActivity = now();
+  broadcastState(room);
+  refillImageCache();
+}
+async function handleDrawguessGuess(room, socketId, { guess }) {
+  if (room.state.status !== 'playing') return;
+  const player = getPlayer(room, socketId);
+  if (!player) return;
+  if (!guess) return;
+  const wordObj = WORD_POOL.find(w => w.word.toLowerCase() === room.state.secretWord.toLowerCase());
+  const correct = isCorrectGuess(wordObj, guess);
+  const displayGuess = String(guess).trim();
+  room.state.guesses.push({ player: player.name, guess: displayGuess, symbol: player.symbol });
+  room.lastActivity = now();
+  if (correct) {
+    room.state.scores[player.symbol] = (room.state.scores[player.symbol]||0)+1;
+    room.state.winner = player.symbol;
+    room.state.status = 'ended';
+    room.state.message = `🎉 ${player.name} 猜对了！答案是 ${room.state.secretWord}`;
+  } else {
+    room.state.message = `❌ ${player.name} 猜错了`;
+  }
+  broadcastState(room);
+}
+async function nextDrawguessRound(room, socketId) { const p=getPlayer(room,socketId); if(!p||!p.isHost) return; if(room.state.round>=room.state.maxRounds&&room.state.status==='ended'){room.state.status='finished'; room.state.message=`🏆 结束！最终 ${room.state.scores[1]} : ${room.state.scores[2]}`; broadcastState(room); return;} room.state.round++; await startDrawguessRound(room); }
+function resetDrawguess(room, socketId) { const p=getPlayer(room,socketId); if(!p) return; if(!p.isHost && room.state.status !== 'ended' && room.state.status !== 'finished') return; room.state=initialDrawguessState(); room.lastActivity=now(); broadcastState(room); }
+
+// ---------- RPS ----------
+function rpsJudge(a, b) { if (a === b) return 0; if ((a === '✊' && b === '✂️') || (a === '✂️' && b === '🖐️') || (a === '🖐️' && b === '✊')) return 1; return -1; }
+function handleRpsChoice(room, socketId, { choice }) {
+  const player = getPlayer(room, socketId);
+  if (!player || (room.state.status !== 'choosing' && room.state.status !== 'playing')) return;
+  if (!['✊','✂️','🖐️'].includes(choice)) return;
+  room.state.choices[player.symbol] = choice;
+  room.lastActivity = now();
+  if (room.state.choices[1] && room.state.choices[2]) {
+    const a = room.state.choices[1], b = room.state.choices[2];
+    const result = rpsJudge(a, b);
+    room.state.result = result === 1 ? 1 : result === -1 ? 2 : 0;
+    if (result !== 0) room.state.scores[result - 1]++;
+    if (room.state.scores[0] >= room.state.target || room.state.scores[1] >= room.state.target) {
+      room.state.winner = room.state.scores[0] > room.state.scores[1] ? 1 : 2;
+      room.state.status = 'finished';
+    } else {
+      room.state.status = 'result';
+    }
+  }
+  broadcastState(room);
+  const bot = room.players.find(p => p.isBot);
+  if (bot && !room.state.choices[bot.symbol]) scheduleOpenClawMove(room, () => rpsBotMove(room), 500);
+}
+function nextRpsRound(room, socketId) {
+  const p = getPlayer(room, socketId); if (!p || !p.isHost) return;
+  if (room.state.status !== 'result' && room.state.status !== 'finished') return;
+  if (room.state.status === 'finished') {
+    room.state = initialRpsState(); room.state.status = 'playing'; room.state.currentPlayer = 1;
+  } else {
+    room.state.round++; room.state.choices = { 1: null, 2: null }; room.state.result = null; room.state.status = 'choosing';
+  }
+  room.lastActivity = now(); broadcastState(room);
+  const bot = room.players.find(p => p.isBot);
+  if (bot) scheduleOpenClawMove(room, () => rpsBotMove(room), 500);
+}
+function startRps(room, socketId) {
+  const p = getPlayer(room, socketId); if (!p || !p.isHost) return;
+  room.state.status = 'choosing'; room.state.choices = { 1: null, 2: null }; room.state.result = null; room.state.scores = [0, 0]; room.state.round = 1; room.state.winner = null;
+  room.lastActivity = now(); broadcastState(room);
+  const bot = room.players.find(p => p.isBot);
+  if (bot) scheduleOpenClawMove(room, () => rpsBotMove(room), 500);
+}
+function resetRps(room, socketId) {
+  const p = getPlayer(room, socketId); if (!p) return;
+  if(!p.isHost && room.state.status !== 'finished') return;
+  room.state = initialRpsState(); room.state.status = room.players.length === 2 ? 'choosing' : 'waiting'; room.lastActivity = now(); broadcastState(room);
+}
+
+// ---------- Memory ----------
+function handleMemoryFlip(room, socketId, { index }) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'playing' || room.state.currentPlayer !== player.symbol || room.players.length < 2) return;
+  index = parseInt(index, 10);
+  if (Number.isNaN(index) || index < 0 || index >= room.state.cards.length) return;
+  const card = room.state.cards[index];
+  if (card.flipped || card.matched || room.state.flipped.length >= 2) return;
+  card.flipped = true; room.state.flipped.push(index); room.lastActivity = now();
+  if (room.state.flipped.length === 2) {
+    const [i1, i2] = room.state.flipped;
+    if (room.state.cards[i1].icon === room.state.cards[i2].icon) {
+      room.state.cards[i1].matched = true; room.state.cards[i2].matched = true;
+      room.state.scores[player.symbol - 1]++;
+      room.state.flipped = [];
+      room.state.message = `✅ ${player.name} 配对成功！`;
+    } else {
+      room.state.message = `❌ 不匹配，轮到对手`;
+    }
+    if (room.state.cards.every(c => c.matched)) {
+      const s1 = room.state.scores[0], s2 = room.state.scores[1];
+      room.state.winner = s1 === s2 ? null : (s1 > s2 ? 1 : 2);
+      room.state.status = 'finished';
+    }
+  }
+  broadcastState(room);
+  if (room.state.flipped.length === 2 && room.state.status !== 'finished') {
+    setTimeout(() => {
+      room.state.flipped.forEach(i => { if (!room.state.cards[i].matched) room.state.cards[i].flipped = false; });
+      room.state.currentPlayer = room.state.currentPlayer === 1 ? 2 : 1;
+      room.state.flipped = [];
+      room.lastActivity = now(); broadcastState(room);
+    }, 1200);
+  }
+}
+function resetMemory(room, socketId) {
+  const p = getPlayer(room, socketId); if (!p) return;
+  if(!p.isHost && room.state.status !== 'finished') return;
+  const nextFirst = room.state.firstPlayer === 1 ? 2 : 1;
+  room.state = initialMemoryState(); room.state.firstPlayer = nextFirst; room.state.currentPlayer = nextFirst; room.state.status = room.players.length === 2 ? 'playing' : 'waiting';
+  room.lastActivity = now(); broadcastState(room);
+}
+
+// ---------- Dots ----------
+function dotsLinesDrawn(state) { let n = 0; for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) if (state.edges[0][r][c]) n++; for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) if (state.edges[1][r][c]) n++; return n; }
+function dotsCheckBoxes(state, player) {
+  let gained = 0;
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    if (state.boxes[r][c]) continue;
+    if (state.edges[0][r][c] && state.edges[0][r + 1][c] && state.edges[1][r][c] && state.edges[1][r][c + 1]) {
+      state.boxes[r][c] = player; gained++; state.scores[player - 1]++;
+    }
+  }
+  return gained;
+}
+function handleDotsLine(room, socketId, { dir, r, c }) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'playing' || room.state.currentPlayer !== player.symbol || room.players.length < 2) return;
+  dir = parseInt(dir, 10); r = parseInt(r, 10); c = parseInt(c, 10);
+  if (dir !== 0 && dir !== 1) return;
+  const bounds = dir === 0 ? (r >= 0 && r < 4 && c >= 0 && c < 3) : (r >= 0 && r < 3 && c >= 0 && c < 4);
+  if (!bounds || room.state.edges[dir][r][c]) return;
+  room.state.edges[dir][r][c] = player; room.state.moves = dotsLinesDrawn(room.state);
+  const gained = dotsCheckBoxes(room.state, player);
+  if (gained === 0) room.state.currentPlayer = room.state.currentPlayer === 1 ? 2 : 1;
+  if (room.state.moves >= room.state.totalLines) {
+    const s1 = room.state.scores[0], s2 = room.state.scores[1];
+    room.state.winner = s1 === s2 ? null : (s1 > s2 ? 1 : 2);
+    room.state.status = 'finished';
+  }
+  room.lastActivity = now(); broadcastState(room);
+  const bot = room.players.find(p => p.isBot);
+  if (bot && room.state.status === 'playing' && room.state.currentPlayer === bot.symbol) scheduleOpenClawMove(room, () => dotsBotMove(room), 700);
+}
+function resetDots(room, socketId) {
+  const p = getPlayer(room, socketId); if (!p) return;
+  if(!p.isHost && room.state.status !== 'finished') return;
+  const nextFirst = room.state.firstPlayer === 1 ? 2 : 1;
+  room.state = initialDotsState(); room.state.firstPlayer = nextFirst; room.state.currentPlayer = nextFirst; room.state.status = room.players.length === 2 ? 'playing' : 'waiting';
+  room.lastActivity = now(); broadcastState(room);
+}
+
+// ---------- Snake ----------
+function broadcastSnakeState(room) { io.to(room.id).emit('snake:state', publicRoomState(room)); }
+function startSnake(room) {
+  if (room.players.length < 2 || room.state.status !== 'waiting') return;
+  room.state.walls = getMapWalls(room.state.map);
+  room.state.snakes = {};
+  room.state.dirs = { 1: { x: 1, y: 0 }, 2: { x: -1, y: 0 } };
+  room.state.nextDirs = { 1: { x: 1, y: 0 }, 2: { x: -1, y: 0 } };
+  room.state.scores = { 1: 0, 2: 0 };
+  room.state.lives = { 1: 3, 2: 3 };
+  room.state.ready = { 1: false, 2: false };
+  room.state.dead = { 1: false, 2: false };
+  room.state.respawnAt = { 1: 0, 2: 0 };
+  room.state.foods = [];
+  room.state.winner = null;
+  room.state.message = '';
+  room.players.forEach(p => { room.state.snakes[p.symbol] = spawnSnake(p.symbol, room.state.map); });
+  room.players.forEach(p => { room.state.foods[p.symbol - 1] = spawnSnakeFood(room); });
+  room.state.status = 'playing';
+  room.lastActivity = now();
+  startGameLoop(room, () => updateSnake(room), 160);
+  broadcastSnakeState(room);
+}
+function spawnSnakeFood(room) {
+  const allSegs = [];
+  Object.values(room.state.snakes).forEach(s => { if (s) allSegs.push(...s); });
+  let pos;
+  do {
+    pos = { x: Math.floor(Math.random() * SNAKE_GRID), y: Math.floor(Math.random() * SNAKE_GRID) };
+  } while (allSegs.some(s => s.x === pos.x && s.y === pos.y) || room.state.walls.some(w => w.x === pos.x && w.y === pos.y));
+  return pos;
+}
+function opposite(d1, d2) { return d1.x + d2.x === 0 && d1.y + d2.y === 0; }
+function handleSnakeDir(room, socketId, dirName) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'playing') return;
+  const dirs = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+  const nd = dirs[dirName];
+  if (!nd) return;
+  const sym = player.symbol;
+  const cur = room.state.nextDirs[sym] || room.state.dirs[sym];
+  if (opposite(cur, nd)) return;
+  room.state.nextDirs[sym] = nd;
+  room.lastActivity = now();
+}
+function handleSnakeReady(room, socketId) {
+  const player = getPlayer(room, socketId);
+  if (!player || room.state.status !== 'waiting') return;
+  room.state.ready[player.symbol] = true;
+  room.lastActivity = now();
+  broadcastSnakeState(room);
+  if (room.state.ready[1] && room.state.ready[2]) startSnake(room);
+}
+function handleSnakeMap(room, socketId, { map }) {
+  const player = getPlayer(room, socketId);
+  if (!player || !player.isHost || room.state.status !== 'waiting') return;
+  if (!SNAKE_MAPS[map]) return;
+  room.state.map = map;
+  room.lastActivity = now();
+  broadcastSnakeState(room);
+}
+function resetSnake(room, socketId) {
+  const p = getPlayer(room, socketId); if (!p) return;
+  if(!p.isHost && room.state.status !== 'ended') return;
+  stopGameLoop(room);
+  room.state = initialSnakeState(); room.state.map = room.state.map;
+  room.lastActivity = now();
+  broadcastSnakeState(room);
+}
+function updateSnake(room) {
+  const s = room.state;
+  if (s.status !== 'playing') return;
+  // apply queued directions
+  [1, 2].forEach(sym => { s.dirs[sym] = s.nextDirs[sym] || s.dirs[sym]; });
+
+  [1, 2].forEach(sym => {
+    if (s.dead[sym]) {
+      if (now() >= s.respawnAt[sym]) respawnSnake(room, sym);
+      return;
+    }
+    const snake = s.snakes[sym];
+    if (!snake) return;
+    const dir = s.dirs[sym];
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    // wall / obstacle collision
+    if (head.x < 0 || head.x >= SNAKE_GRID || head.y < 0 || head.y >= SNAKE_GRID || s.walls.some(w => w.x === head.x && w.y === head.y)) {
+      killSnake(room, sym); return;
+    }
+
+    // self / other collision
+    if (snake.some(seg => seg.x === head.x && seg.y === head.y)) { killSnake(room, sym); return; }
+    const other = sym === 1 ? 2 : 1;
+    const otherSnake = s.snakes[other];
+    if (otherSnake && otherSnake.some(seg => seg.x === head.x && seg.y === head.y)) { killSnake(room, sym); return; }
+
+    snake.unshift(head);
+    const food = s.foods[sym - 1];
+    if (food && food.x === head.x && food.y === head.y) {
+      s.scores[sym] += 10;
+      s.foods[sym - 1] = spawnSnakeFood(room);
+    } else {
+      snake.pop();
+    }
+  });
+
+  checkSnakeWinner(room);
+  room.lastActivity = now();
+  broadcastSnakeState(room);
+}
+function killSnake(room, sym) {
+  const s = room.state;
+  s.lives[sym]--;
+  s.dead[sym] = true;
+  s.snakes[sym] = null;
+  if (s.lives[sym] <= 0) {
+    const other = sym === 1 ? 2 : 1;
+    s.winner = other;
+    s.status = 'ended';
+    s.message = `玩家 ${sym} 生命耗尽，玩家 ${other} 获胜！`;
+    stopGameLoop(room);
+  } else {
+    s.respawnAt[sym] = now() + 1500;
+    s.message = `玩家 ${sym} 撞墙，剩余生命 ${s.lives[sym]}`;
+  }
+}
+function respawnSnake(room, sym) {
+  const s = room.state;
+  s.snakes[sym] = spawnSnake(sym, s.map);
+  s.dirs[sym] = sym === 1 ? { x: 1, y: 0 } : { x: -1, y: 0 };
+  s.nextDirs[sym] = { ...s.dirs[sym] };
+  s.dead[sym] = false;
+  s.respawnAt[sym] = 0;
+  s.message = '';
+}
+function checkSnakeWinner(room) {
+  const s = room.state;
+  if (s.status !== 'playing') return;
+  const alive = [1, 2].filter(sym => !s.dead[sym] || s.lives[sym] > 0);
+  if (alive.length === 1) {
+    s.winner = alive[0];
+    s.status = 'ended';
+    s.message = `玩家 ${alive[0]} 获胜！`;
+    stopGameLoop(room);
+  }
+}
+
+
+// ---------- OpenClaw Bots (Dots / RPS) ----------
+function addOpenClawBot(room, botSymbol = 2) {
+  const botId = `openclaw-bot-${room.id}`;
+  if (room.players.find(p => p.socketId === botId)) return null;
+  const bot = { socketId: botId, name: '🦞 OpenClaw', symbol: botSymbol, isHost: false, connected: true, isBot: true };
+  room.players.push(bot);
+  return bot;
+}
+function isOpenClawTurn(room) {
+  const bot = room.players.find(p => p.isBot);
+  if (!bot) return false;
+  return room.state.currentPlayer === bot.symbol;
+}
+function scheduleOpenClawMove(room, fn, delay = 600) {
+  setTimeout(() => {
+    if (!rooms.has(room.id)) return;
+    fn();
+  }, delay);
+}
+
+function rpsBotMove(room) {
+  const bot = room.players.find(p => p.isBot);
+  if (!bot || room.state.status !== 'choosing' || room.state.choices[bot.symbol]) return;
+  const choices = ['✊','✂️','🖐️'];
+  const choice = choices[Math.floor(Math.random() * choices.length)];
+  handleRpsChoice(room, bot.socketId, { choice });
+}
+
+function dotsBotAvailableEdges(state) {
+  const list = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) if (!state.edges[0][r][c]) list.push({ dir: 0, r, c });
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) if (!state.edges[1][r][c]) list.push({ dir: 1, r, c });
+  return list;
+}
+function dotsBotBoxGain(state, dir, r, c) {
+  let gain = 0;
+  const boxes = [];
+  if (dir === 0) { boxes.push([r - 1, c]); boxes.push([r, c]); }
+  else { boxes.push([r, c - 1]); boxes.push([r, c]); }
+  for (const [br, bc] of boxes) {
+    if (br < 0 || br >= 3 || bc < 0 || bc >= 3 || state.boxes[br][bc]) continue;
+    let sides = 0;
+    if (state.edges[0][br][bc]) sides++;
+    if (state.edges[0][br + 1][bc]) sides++;
+    if (state.edges[1][br][bc]) sides++;
+    if (state.edges[1][br][bc + 1]) sides++;
+    if (sides === 3) gain++;
+  }
+  return gain;
+}
+function dotsBotThirdSides(state, dir, r, c) {
+  let bad = 0;
+  const boxes = [];
+  if (dir === 0) { boxes.push([r - 1, c]); boxes.push([r, c]); }
+  else { boxes.push([r, c - 1]); boxes.push([r, c]); }
+  for (const [br, bc] of boxes) {
+    if (br < 0 || br >= 3 || bc < 0 || bc >= 3 || state.boxes[br][bc]) continue;
+    let sides = 0;
+    if (state.edges[0][br][bc]) sides++;
+    if (state.edges[0][br + 1][bc]) sides++;
+    if (state.edges[1][br][bc]) sides++;
+    if (state.edges[1][br][bc + 1]) sides++;
+    if (sides === 3) bad++;
+  }
+  return bad;
+}
+function dotsBotMove(room) {
+  const bot = room.players.find(p => p.isBot);
+  if (!bot || room.state.status !== 'playing' || room.state.currentPlayer !== bot.symbol) return;
+  const moves = dotsBotAvailableEdges(room.state);
+  if (!moves.length) return;
+  let best = null, bestScore = -Infinity;
+  for (const mv of moves) {
+    const gain = dotsBotBoxGain(room.state, mv.dir, mv.r, mv.c);
+    const bad = dotsBotThirdSides(room.state, mv.dir, mv.r, mv.c);
+    let score = gain * 100 - bad * 40 + Math.random();
+    if (score > bestScore) { bestScore = score; best = mv; }
+  }
+  if (best) handleDotsLine(room, bot.socketId, best);
+}
+
+function startGameLoop(room, fn, intervalMs = PONG.tickMs) {
+  stopGameLoop(room);
+  room.loop = setInterval(() => {
+    if (!rooms.has(room.id)) { stopGameLoop(room); return; }
+    try { fn(); } catch (e) { console.error('loop error', e); }
+  }, intervalMs);
+}
+function stopGameLoop(room) { if (room.loop) { clearInterval(room.loop); room.loop = null; } }
+
+// ---------- Socket Events ----------
+function attachGameListeners(socket) {
+  socket.on('createRoom', ({ gameType, playerName }) => {
+    if (!ALL_GAMES.includes(gameType)) return;
+    const room = createRoom(gameType, playerName, socket.id);
+    socket.join(room.id);
+    socket.roomId = room.id;
+    socket.playerSymbol = 1;
+    socket.emit('roomCreated', { roomId: room.id, gameType, player: { ...room.players[0], socketId: socket.id }, link: getShareLink(room) });
+    socket.emit('chat:history', room.messages.slice(-50));
+    broadcastState(room);
+  });
+
+  socket.on('createOpenClawRoom', ({ gameType, playerName }) => {
+    if (!['dots','rps'].includes(gameType)) return;
+    const room = createRoom(gameType, playerName, socket.id);
+    addOpenClawBot(room, 2);
+    socket.join(room.id); socket.roomId = room.id; socket.playerSymbol = 1;
+    socket.emit('roomCreated', { roomId: room.id, gameType, player: { ...room.players[0], socketId: socket.id }, link: getShareLink(room), vsOpenClaw: true });
+    socket.emit('chat:history', room.messages.slice(-50));
+    if (gameType === 'rps') { room.state.status = 'choosing'; }
+    if (gameType === 'dots') { room.state.status = 'playing'; }
+    broadcastState(room);
+    if (gameType === 'rps') scheduleOpenClawMove(room, () => rpsBotMove(room), 500);
+    if (gameType === 'dots' && room.state.currentPlayer === 2) scheduleOpenClawMove(room, () => dotsBotMove(room), 700);
+  });
+
+  socket.on('quickMatch:join', ({ gameType, playerName }) => findQuickMatch(gameType, socket, playerName));
+  socket.on('quickMatch:leave', () => removeFromQuickMatch(socket));
+
+  socket.on('joinRoom', ({ roomId, playerName }) => {
+    const room = rooms.get(roomId && roomId.toUpperCase());
+    if (!room) { socket.emit('error', { message: 'Room not found' }); return; }
+    if (room.players.find(p => p.socketId === socket.id)) return;
+    if (room.players.length >= 2) {
+      const spec = joinRoomAsSpectator(room, socket.id, playerName);
+      socket.join(room.id); socket.roomId = room.id; socket.isSpectator = true;
+      socket.emit('joinedAsSpectator', publicRoomState(room));
+    } else {
+      const player = joinRoomAsPlayer(room, socket.id, playerName);
+      if (!player) { socket.emit('error', { message: 'Room is full' }); return; }
+      socket.join(room.id); socket.roomId = room.id; socket.playerSymbol = player.symbol;
+      socket.emit('joinedRoom', { ...publicRoomState(room), you: { socketId: player.socketId, name: player.name, symbol: player.symbol, isHost: player.isHost } });
+      socket.emit('chat:history', room.messages.slice(-50));
+      if (['gomoku','tictactoe','connect4','rps','memory','dots'].includes(room.gameType)) startGameIfReady(room);
+      if (room.gameType === 'pong') startPongIfReady(room);
+      broadcastState(room);
+    }
+  });
+  socket.on('chat:history', () => {
+    const room = rooms.get(socket.roomId);
+    if (room) socket.emit('chat:history', room.messages.slice(-50));
+  });
+
+  socket.on('gomoku:move', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='gomoku') handleGomokuMove(r,socket.id,data); });
+  socket.on('gomoku:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='gomoku') resetGomoku(r,socket.id); });
+
+  socket.on('pong:paddle', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='pong') handlePongPaddle(r,socket.id,data); });
+  socket.on('pong:serve', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='pong') handlePongServe(r,socket.id); });
+  socket.on('pong:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='pong') resetPong(r,socket.id); });
+
+  socket.on('tictactoe:move', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='tictactoe') handleTictactoeMove(r,socket.id,data); });
+  socket.on('tictactoe:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='tictactoe') resetTictactoe(r,socket.id); });
+
+  socket.on('connect4:drop', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='connect4') connect4Drop(r,socket.id,data); });
+  socket.on('connect4:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='connect4') resetConnect4(r,socket.id); });
+
+  socket.on('drawguess:start', async () => { const r=rooms.get(socket.roomId); if(!r||r.gameType!=='drawguess') return; const p=getPlayer(r,socket.id); if(!p||!p.isHost) return; await startDrawguessRound(r); });
+  socket.on('drawguess:guess', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='drawguess') handleDrawguessGuess(r,socket.id,data); });
+  socket.on('drawguess:next', async () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='drawguess') await nextDrawguessRound(r,socket.id); });
+  socket.on('drawguess:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='drawguess') resetDrawguess(r,socket.id); });
+
+  socket.on('draw2guess:start', async () => { const r=rooms.get(socket.roomId); if(!r||r.gameType!=='draw2guess') return; const p=getPlayer(r,socket.id); if(!p||!p.isHost) return; if (r.players.length < 2) { socket.emit('error', { message: '需要两名玩家才能开始' }); return; } await startDraw2GuessRound(r); });
+  socket.on('draw2guess:stroke', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='draw2guess') handleDraw2GuessStroke(r,socket.id,data); });
+  socket.on('draw2guess:guess', async data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='draw2guess') await handleDraw2GuessGuess(r,socket.id,data); });
+  socket.on('draw2guess:next', async () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='draw2guess') await nextDraw2GuessRound(r,socket.id); });
+  socket.on('draw2guess:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='draw2guess') resetDraw2Guess(r,socket.id); });
+
+  socket.on('rps:choice', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='rps') handleRpsChoice(r,socket.id,data); });
+  socket.on('rps:start', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='rps') startRps(r,socket.id); });
+  socket.on('rps:next', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='rps') nextRpsRound(r,socket.id); });
+  socket.on('rps:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='rps') resetRps(r,socket.id); });
+
+  socket.on('memory:flip', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='memory') handleMemoryFlip(r,socket.id,data); });
+  socket.on('memory:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='memory') resetMemory(r,socket.id); });
+
+  socket.on('dots:line', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='dots') handleDotsLine(r,socket.id,data); });
+  socket.on('dots:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='dots') resetDots(r,socket.id); });
+
+  socket.on('snake:dir', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='snake') handleSnakeDir(r,socket.id,data); });
+  socket.on('snake:ready', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='snake') handleSnakeReady(r,socket.id); });
+  socket.on('snake:map', data => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='snake') handleSnakeMap(r,socket.id,data); });
+  socket.on('snake:start', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='snake') startSnake(r); });
+  socket.on('snake:reset', () => { const r=rooms.get(socket.roomId); if(r&&r.gameType==='snake') resetSnake(r,socket.id); });
+
+  socket.on('chat:send', ({ text, type }) => {
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+    const player = getPlayer(room, socket.id);
+    const name = player ? player.name : (room.spectators.find(s=>s.socketId===socket.id)?.name || 'Guest');
+    const msg = { id: generateRoomId(), name, text: String(text||'').slice(0, 200), type: type || 'text', time: now() };
+    room.messages.push(msg);
+    if (room.messages.length > 50) room.messages.shift();
+    emitRoom(room, 'chat:message', msg);
+  });
+
+  socket.on('disconnect', () => {
+    removeFromQuickMatch(socket);
+    if (!socket.roomId) return;
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+    const wasPlayer = getPlayer(room, socket.id);
+    if (removeFromRoom(room, socket.id)) return;
+    if (room.players.length < 2) {
+      if (room.gameType === 'pong') { stopGameLoop(room); room.state = initialPongState(); }
+      else if (room.gameType === 'snake') { stopGameLoop(room); if (room.state.status !== 'ended') room.state.status = 'waiting'; }
+      else if (['gomoku','tictactoe','connect4','rps','memory','dots'].includes(room.gameType)) {
+        if (room.state.status !== 'ended' && room.state.status !== 'finished') room.state.status = 'waiting';
+      }
+    }
+    if (room.gameType === 'pong' && wasPlayer && room.state.status !== 'waiting') { stopGameLoop(room); room.state.status='waiting'; room.state.winner=wasPlayer.symbol===1?2:1; }
+    broadcastState(room);
+  });
+}
+io.on('connection', socket => attachGameListeners(socket));
+
+// ---------- REST API ----------
+app.get('/api/health', (req, res) => res.json({ ok: true, rooms: rooms.size, uptime: process.uptime() }));
+
+app.post('/api/auth/register', (req, res) => {
+  const { account, password, name } = req.body;
+  if (!account || !password) return res.status(400).json({ error: '账号和密码必填' });
+  const result = createUser(account, password, name);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ...result.user, token: result.user.id });
+});
+app.post('/api/auth/login', (req, res) => {
+  const { account, password } = req.body;
+  const u = checkLogin(account, password);
+  if (!u) return res.status(401).json({ error: '账号或密码错误' });
+  res.json({ ...publicUser(u), token: u.id });
+});
+app.get('/api/auth/me', (req, res) => {
+  const u = getUserByToken(req.query.token);
+  if (!u) return res.status(401).json({ error: '未登录' });
+  res.json(publicUser(u));
+});
+app.post('/api/auth/rename', (req, res) => {
+  const { token, name } = req.body;
+  const result = renameUser(token, name);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result.user);
+});
+app.get('/api/users/records', (req, res) => {
+  const u = getUserByToken(req.query.token);
+  if (!u) return res.status(401).json({ error: '未登录' });
+  res.json({ user: publicUser(u), records: getUserRecords(u.id) });
+});
+app.post('/api/leaderboard/submit', (req, res) => {
+  const { token, game, score } = req.body;
+  const u = getUserByToken(token);
+  if (!u) return res.status(401).json({ error: '未登录' });
+  const result = submitRecord(u.id, game, score);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ success: true });
+});
+app.get('/api/leaderboard', (req, res) => {
+  res.json({ game: req.query.game, list: getLeaderboard(req.query.game, parseInt(req.query.limit, 10) || 20) });
+});
+app.get('/api/rooms', (req, res) => {
+  const list = [];
+  for (const r of rooms.values()) {
+    if (r.players.length === 0) continue;
+    list.push({
+      id: r.id, gameType: r.gameType,
+      players: r.players.filter(p => !p.isBot).map(p => ({ name: p.name, symbol: p.symbol })),
+      status: r.state.status, hasSlot: r.players.filter(p => !p.isBot).length < 2
+    });
+  }
+  const gameType = req.query.gameType;
+  res.json({ rooms: gameType ? list.filter(r => r.gameType === gameType) : list });
+});
+
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const { messages, model, temperature, response_format } = req.body;
+    const result = await axios.post(`${AGNES_BASE_URL}/chat/completions`, { model: model||CHAT_MODEL, messages, temperature: temperature??0.7, response_format }, { headers: { Authorization: `Bearer ${AGNES_KEY}`, 'Content-Type': 'application/json' }, timeout: 30000 });
+    res.json(result.data);
+  } catch (e) { res.status(500).json({ error: e.message, details: e.response?.data }); }
+});
+app.post('/api/ai/image', async (req, res) => {
+  try {
+    const { prompt, size, n } = req.body;
+    const result = await axios.post(`${AGNES_BASE_URL}/images/generations`, { model: IMAGE_MODEL, prompt, n: n||1, size: size||'1024x1024' }, { headers: { Authorization: `Bearer ${AGNES_KEY}`, 'Content-Type': 'application/json' }, timeout: 90000 });
+    res.json(result.data);
+  } catch (e) { res.status(500).json({ error: e.message, details: e.response?.data }); }
+});
+app.post('/api/ai/tts', async (req, res) => {
+  try {
+    const { text, voice, model } = req.body;
+    const audio = await synthesize(text, voice||TTS_VOICE, model||TTS_MODEL);
+    if (!audio) return res.status(500).json({ error: 'TTS failed' });
+    res.json({ audio, text });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- OpenClaw Remote API for Drawguess ----------
+app.post('/api/openclaw/drawguess/rooms', (req, res) => {
+  const room = createRoom('drawguess', req.body.playerName || 'OpenClaw', 'openclaw-host');
+  room.openclawHost = true;
+  res.json({ success: true, roomId: room.id, link: getShareLink(room), state: publicRoomState(room) });
+});
+app.get('/api/openclaw/drawguess/rooms/:roomId', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'drawguess') return res.status(404).json({ error: 'Room not found' });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/drawguess/rooms/:roomId/join', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'drawguess') return res.status(404).json({ error: 'Room not found' });
+  if (room.players.length >= 2) return res.status(400).json({ error: 'Room full' });
+  const sid = `openclaw-${Date.now()}`;
+  const player = joinRoomAsPlayer(room, sid, req.body.playerName || 'OpenClaw');
+  res.json({ success: true, playerId: sid, player: { name: player.name, symbol: player.symbol }, state: publicRoomState(room) });
+});
+app.post('/api/openclaw/drawguess/rooms/:roomId/start', async (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'drawguess') return res.status(404).json({ error: 'Room not found' });
+  await startDrawguessRound(room);
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/drawguess/rooms/:roomId/guess', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'drawguess') return res.status(404).json({ error: 'Room not found' });
+  const { playerId, guess } = req.body;
+  const player = room.players.find(p => p.socketId === playerId);
+  if (!player) return res.status(400).json({ error: 'Player not in room' });
+  const wordObj = WORD_POOL.find(w => w.word.toLowerCase() === room.state.secretWord.toLowerCase());
+  const correct = isCorrectGuess(wordObj, guess);
+  const displayGuess = String(guess).trim();
+  room.state.guesses.push({ player: player.name, guess: displayGuess, symbol: player.symbol });
+  if (correct) {
+    room.state.scores[player.symbol] = (room.state.scores[player.symbol]||0)+1;
+    room.state.winner = player.symbol; room.state.status = 'ended';
+    room.state.message = `🎉 ${player.name} guessed correctly! Answer: ${room.state.secretWord}`;
+  } else room.state.message = `❌ ${player.name} guessed wrong`;
+  broadcastState(room);
+  res.json({ guess: displayGuess, correct, answer: room.state.secretWord, state: publicRoomState(room) });
+});
+app.post('/api/openclaw/drawguess/rooms/:roomId/agnes-guess', async (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'drawguess') return res.status(404).json({ error: 'Room not found' });
+  if (!AGNES_KEY) return res.status(500).json({ error: 'Agnes key missing' });
+  const player = room.players.find(p => p.socketId === req.body.playerId);
+  if (!player) return res.status(400).json({ error: 'Player not in room' });
+  try {
+    const result = await axios.post(`${AGNES_BASE_URL}/chat/completions`, {
+      model: CHAT_MODEL,
+      messages: [
+        { role: 'system', content: 'You are playing a word guessing game. Based on the image category and previous guesses, guess a single English word. Return only JSON: {"guess":"word"}.' },
+        { role: 'user', content: `Category: ${room.state.category}. Previous guesses: ${room.state.guesses.map(g=>g.guess).join(', ')||'none'}. What is the word?` }
+      ],
+      temperature: 0.7,
+      response_format: { type: 'json_object' }
+    }, { headers: { Authorization: `Bearer ${AGNES_KEY}`, 'Content-Type': 'application/json' }, timeout: 20000 });
+    const parsed = JSON.parse(result.data.choices[0].message.content || '{}');
+    const guess = String(parsed.guess || '').trim();
+    const wordObj = WORD_POOL.find(w => w.word.toLowerCase() === room.state.secretWord.toLowerCase());
+    const correct = isCorrectGuess(wordObj, guess);
+    room.state.guesses.push({ player: `${player.name} (Agnes)`, guess, symbol: player.symbol });
+    if (correct) { room.state.scores[player.symbol]=(room.state.scores[player.symbol]||0)+1; room.state.winner=player.symbol; room.state.status='ended'; room.state.message=`🎉 ${player.name} (Agnes) guessed correctly! Answer: ${room.state.secretWord}`; }
+    else room.state.message = `❌ ${player.name} (Agnes) guessed "${guess}" — wrong`;
+    broadcastState(room);
+    res.json({ guess, correct, answer: room.state.secretWord, state: publicRoomState(room) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// ---------- OpenClaw endpoints for Gomoku / Tictactoe / Connect4 / Pong ----------
+function openclawRoom(gameType, playerName) {
+  const room = createRoom(gameType, playerName || 'OpenClaw', 'openclaw-host');
+  room.openclawHost = true;
+  return room;
+}
+function openclawJoin(room, playerName) {
+  if (room.players.length >= 2) return null;
+  const sid = `openclaw-${Date.now()}`;
+  return { player: joinRoomAsPlayer(room, sid, playerName || 'OpenClaw'), playerId: sid };
+}
+
+['gomoku','tictactoe','connect4','pong','rps','memory','dots'].forEach(gameType => {
+  app.post(`/api/openclaw/${gameType}/rooms`, (req, res) => {
+    const room = openclawRoom(gameType, req.body.playerName);
+    res.json({ success: true, roomId: room.id, link: getShareLink(room), state: publicRoomState(room) });
+  });
+  app.get(`/api/openclaw/${gameType}/rooms/:roomId`, (req, res) => {
+    const room = rooms.get(req.params.roomId.toUpperCase());
+    if (!room || room.gameType !== gameType) return res.status(404).json({ error: 'Room not found' });
+    res.json(publicRoomState(room));
+  });
+  app.post(`/api/openclaw/${gameType}/rooms/:roomId/join`, (req, res) => {
+    const room = rooms.get(req.params.roomId.toUpperCase());
+    if (!room || room.gameType !== gameType) return res.status(404).json({ error: 'Room not found' });
+    const joined = openclawJoin(room, req.body.playerName);
+    if (!joined) return res.status(400).json({ error: 'Room full' });
+    if (gameType === 'pong' && room.players.length === 2) startPongIfReady(room);
+    if (['gomoku','tictactoe','connect4','rps','memory','dots'].includes(gameType)) startGameIfReady(room);
+    res.json({ success: true, playerId: joined.playerId, player: { name: joined.player.name, symbol: joined.player.symbol }, state: publicRoomState(room) });
+  });
+});
+
+app.post('/api/openclaw/gomoku/rooms/:roomId/move', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'gomoku') return res.status(404).json({ error: 'Room not found' });
+  handleGomokuMove(room, req.body.playerId, { row: req.body.row, col: req.body.col });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/gomoku/rooms/:roomId/reset', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'gomoku') return res.status(404).json({ error: 'Room not found' });
+  resetGomoku(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+
+app.post('/api/openclaw/tictactoe/rooms/:roomId/move', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'tictactoe') return res.status(404).json({ error: 'Room not found' });
+  handleTictactoeMove(room, req.body.playerId, { row: req.body.row, col: req.body.col });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/tictactoe/rooms/:roomId/reset', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'tictactoe') return res.status(404).json({ error: 'Room not found' });
+  resetTictactoe(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+
+app.post('/api/openclaw/connect4/rooms/:roomId/drop', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'connect4') return res.status(404).json({ error: 'Room not found' });
+  connect4Drop(room, req.body.playerId, { col: req.body.col });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/connect4/rooms/:roomId/reset', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'connect4') return res.status(404).json({ error: 'Room not found' });
+  resetConnect4(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+
+app.post('/api/openclaw/pong/rooms/:roomId/paddle', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'pong') return res.status(404).json({ error: 'Room not found' });
+  handlePongPaddle(room, req.body.playerId, { x: req.body.x });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/pong/rooms/:roomId/serve', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'pong') return res.status(404).json({ error: 'Room not found' });
+  handlePongServe(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/pong/rooms/:roomId/reset', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'pong') return res.status(404).json({ error: 'Room not found' });
+  resetPong(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+
+app.post('/api/openclaw/rps/rooms/:roomId/choice', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'rps') return res.status(404).json({ error: 'Room not found' });
+  handleRpsChoice(room, req.body.playerId, { choice: req.body.choice });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/rps/rooms/:roomId/start', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'rps') return res.status(404).json({ error: 'Room not found' });
+  startRps(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/rps/rooms/:roomId/next', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'rps') return res.status(404).json({ error: 'Room not found' });
+  nextRpsRound(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/rps/rooms/:roomId/reset', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'rps') return res.status(404).json({ error: 'Room not found' });
+  resetRps(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+
+app.post('/api/openclaw/memory/rooms/:roomId/flip', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'memory') return res.status(404).json({ error: 'Room not found' });
+  handleMemoryFlip(room, req.body.playerId, { index: req.body.index });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/memory/rooms/:roomId/reset', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'memory') return res.status(404).json({ error: 'Room not found' });
+  resetMemory(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+
+app.post('/api/openclaw/dots/rooms/:roomId/line', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'dots') return res.status(404).json({ error: 'Room not found' });
+  handleDotsLine(room, req.body.playerId, { dir: req.body.dir, r: req.body.r, c: req.body.c });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/dots/rooms/:roomId/reset', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'dots') return res.status(404).json({ error: 'Room not found' });
+  resetDots(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+
+app.post('/api/openclaw/draw2guess/rooms', (req, res) => {
+  const room = openclawRoom('draw2guess', req.body.playerName);
+  res.json({ success: true, roomId: room.id, link: getShareLink(room), state: publicRoomState(room) });
+});
+app.get('/api/openclaw/draw2guess/rooms/:roomId', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'draw2guess') return res.status(404).json({ error: 'Room not found' });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/draw2guess/rooms/:roomId/join', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'draw2guess') return res.status(404).json({ error: 'Room not found' });
+  const joined = openclawJoin(room, req.body.playerName);
+  if (!joined) return res.status(400).json({ error: 'Room full' });
+  res.json({ success: true, playerId: joined.playerId, player: { name: joined.player.name, symbol: joined.player.symbol }, state: publicRoomState(room) });
+});
+app.get('/api/openclaw/draw2guess/rooms/:roomId/word', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'draw2guess') return res.status(404).json({ error: 'Room not found' });
+  const player = room.players.find(p => p.socketId === req.query.playerId);
+  if (!player || player.symbol !== room.state.drawer) return res.status(403).json({ error: 'Not drawer' });
+  res.json({ word: room.state.secretWord, category: room.state.category });
+});
+app.post('/api/openclaw/draw2guess/rooms/:roomId/start', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'draw2guess') return res.status(404).json({ error: 'Room not found' });
+  const p = room.players.find(pl => pl.socketId === req.body.playerId);
+  if (!p || !p.isHost) return res.status(403).json({ error: 'Only host' });
+  if (room.players.length < 2) return res.status(400).json({ error: 'Need 2 players' });
+  startDraw2GuessRound(room);
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/draw2guess/rooms/:roomId/stroke', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'draw2guess') return res.status(404).json({ error: 'Room not found' });
+  handleDraw2GuessStroke(room, req.body.playerId, { stroke: req.body.stroke });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/draw2guess/rooms/:roomId/guess', async (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'draw2guess') return res.status(404).json({ error: 'Room not found' });
+  await handleDraw2GuessGuess(room, req.body.playerId, { guess: req.body.guess });
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/draw2guess/rooms/:roomId/next', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'draw2guess') return res.status(404).json({ error: 'Room not found' });
+  nextDraw2GuessRound(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+app.post('/api/openclaw/draw2guess/rooms/:roomId/reset', (req, res) => {
+  const room = rooms.get(req.params.roomId.toUpperCase());
+  if (!room || room.gameType !== 'draw2guess') return res.status(404).json({ error: 'Room not found' });
+  resetDraw2Guess(room, req.body.playerId);
+  res.json(publicRoomState(room));
+});
+
+app.get('/api/openclaw', (req, res) => {
+  res.json({ info: 'OpenClaw remote play endpoints', endpoints: [
+    'drawguess: POST /api/openclaw/drawguess/rooms, :roomId/join, :roomId/start, :roomId/guess, :roomId/agnes-guess',
+    'gomoku: POST /api/openclaw/gomoku/rooms, :roomId/join, :roomId/move, :roomId/reset',
+    'tictactoe: POST /api/openclaw/tictactoe/rooms, :roomId/join, :roomId/move, :roomId/reset',
+    'connect4: POST /api/openclaw/connect4/rooms, :roomId/join, :roomId/drop, :roomId/reset',
+    'pong: POST /api/openclaw/pong/rooms, :roomId/join, :roomId/paddle, :roomId/serve, :roomId/reset',
+    'rps: POST /api/openclaw/rps/rooms, :roomId/join, :roomId/start, :roomId/choice, :roomId/next, :roomId/reset',
+    'memory: POST /api/openclaw/memory/rooms, :roomId/join, :roomId/flip, :roomId/reset',
+    'dots: POST /api/openclaw/dots/rooms, :roomId/join, :roomId/line, :roomId/reset',
+    'draw2guess: POST /api/openclaw/draw2guess/rooms, :roomId/join, :roomId/start, :roomId/stroke, :roomId/guess, :roomId/next, :roomId/reset'
+  ]});
+});
+
+// ---------- Catch-all ----------
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+setInterval(() => {
+  const t = now();
+  for (const [id, room] of rooms) {
+    if (room.quickMatch && room.players.length === 0 && t > room.reservedUntil) {
+      rooms.delete(id);
+    }
+  }
+}, 10000);
+
+server.listen(PORT, () => {
+  console.log(`🦞 龙虾游戏盒子 running on http://0.0.0.0:${PORT}`);
+  if (AGNES_KEY) refillImageCache();
+});

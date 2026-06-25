@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>打砖块 - AI 游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .game-header { padding: 4px 0 6px; gap: 8px; }
+    .game-header h1 { font-size: 1.1rem; }
+    #breakout-canvas { display: block; margin: 0 auto; border-radius: 12px; background: #0a0a1a; touch-action: none; width: 100%; max-width: 420px; height: auto; }
+    .touch-controls { display: none; justify-content: center; gap: 20px; margin-top: 10px; }
+    .touch-btn { width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: #fff; font-size: 1.6rem; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; -webkit-user-drag: none; touch-action: manipulation; }
+    .touch-btn:active { background: rgba(255,255,255,0.2); }
+    @media (pointer: coarse) { .touch-controls { display: flex; } }
+    .hud { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 0.85rem; color: #eee; background: rgba(255,255,255,0.06); border-radius: 10px; margin-bottom: 6px; }
+    .hud span { font-weight: 600; }
+    .controls { margin-top: 8px; display: flex; gap: 8px; justify-content: center; }
+    .canvas-wrap { position: relative; display: inline-block; }
+    .start-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,10,25,0.88); border-radius: 12px; color: #fff; z-index: 10; overflow-y: auto; }
+    .start-overlay h2 { font-size: 1.4rem; margin-bottom: 8px; }
+    .start-overlay p { font-size: 0.85rem; color: #aaa; }
+    .level-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+    .level-card { padding: 14px 8px; border-radius: 10px; background: rgba(255,255,255,0.08); color: #fff; cursor: pointer; text-align: center; border: 2px solid transparent; transition: .15s; }
+    .level-card:hover, .level-card:focus { background: rgba(255,255,255,0.18); border-color: #4d96ff; }
+    .level-card .num { font-size: 1.3rem; font-weight: 700; }
+    .level-card .name { font-size: 0.75rem; color: #bbb; margin-top: 4px; }
+    .level-card.locked { opacity: 0.5; cursor: not-allowed; }
+    .level-card.locked:hover, .level-card.locked:focus { background: rgba(255,255,255,0.08); border-color: transparent; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>🧱 打砖块</h1>
+    </div>
+    <div class="hud">
+      <div>💯 <span id="hud-score">0</span></div>
+      <div>❤️ <span id="hud-lives">3</span></div>
+      <div>🎚 <span id="hud-level">1</span></div>
+      <div>🏆 <span id="hud-best">0</span></div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="breakout-canvas" width="360" height="500"></canvas>
+      <div class="start-overlay" id="start-overlay">
+        <h2>🧱 打砖块</h2>
+        <p>选择关卡开始游戏</p>
+        <div id="start-level-grid" class="level-grid" style="max-width:280px;padding:0 12px;"></div>
+      </div>
+    </div>
+    <div class="touch-controls" id="touch-controls">
+      <button class="touch-btn" id="btn-left">◀</button>
+      <button class="touch-btn" id="btn-right">▶</button>
+    </div>
+    <div class="controls">
+      <button class="btn btn-warning" onclick="pauseGame()">⏸ 暂停</button>
+      <button class="btn btn-ghost" onclick="openLevelSelect()">📋 选关</button>
+    </div>
+  </div>
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">游戏结束</h2>
+      <p id="end-subtitle">得分: 0</p>
+      <button class="btn btn-primary" id="end-next" onclick="nextLevel()">下一关</button>
+      <button class="btn btn-ghost" onclick="openLevelSelect()">📋 选关</button>
+      <button class="btn btn-primary" onclick="startGame()">再来一局</button>
+    </div>
+  </div>
+  <div id="level-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>📋 选择关卡</h2>
+      <div id="level-grid" class="level-grid"></div>
+      <button class="btn btn-ghost" onclick="closeLevelSelect()">关闭</button>
+    </div>
+  </div>
+  <script>
+  (function(){
+    const canvas=document.getElementById('breakout-canvas'),ctx=canvas.getContext('2d');
+    const W=canvas.width,H=canvas.height;
+    const overlay=document.getElementById('start-overlay'),endModal=document.getElementById('end-modal');
+    let state='idle',paddle,ball,bricks,score,lives,best=+localStorage.getItem('breakoutBest')||0,currentLevel=1,unlockedLevel=+localStorage.getItem('breakoutUnlocked')||1;
+    const BRICK_ROWS=8,BRICK_COLS=8,BRICK_W=W/BRICK_COLS-2,BRICK_H=16,BRICK_PAD=2,BRICK_TOP=36;
+    const COLORS=['#ff4d6a','#ff9f43','#ffd93d','#6bcb77','#4d96ff','#9b59b6','#1abc9c','#e74c3c'];
+    const BALL_SPEED=5;
+    document.getElementById('hud-best').textContent=best;
+
+    // 0=empty, 1=normal, 2=hard (2 hits)
+    const LEVELS=[
+      [ // 1 classic full wall
+        [1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1]
+      ],
+      [ // 2 checkerboard
+        [1,0,1,0,1,0,1,0],
+        [0,1,0,1,0,1,0,1],
+        [1,0,1,0,1,0,1,0],
+        [0,1,0,1,0,1,0,1],
+        [1,0,1,0,1,0,1,0],
+        [0,1,0,1,0,1,0,1],
+        [2,0,2,0,2,0,2,0]
+      ],
+      [ // 3 diamond / stair
+        [0,0,0,1,1,0,0,0],
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,2,2,1,1,0],
+        [1,1,2,2,2,2,1,1],
+        [0,1,1,2,2,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,1,1,0,0,0]
+      ],
+      [ // 4 fortress (thick walls + core)
+        [2,2,0,0,0,0,2,2],
+        [2,0,0,1,1,0,0,2],
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,2,2,1,1,0],
+        [0,1,1,2,2,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [2,0,0,1,1,0,0,2],
+        [2,2,0,0,0,0,2,2]
+      ],
+      [ // 5 sparse rows
+        [2,0,0,2,2,0,0,2],
+        [0,1,1,0,0,1,1,0],
+        [0,0,2,2,2,2,0,0],
+        [1,1,0,0,0,0,1,1],
+        [0,0,1,1,1,1,0,0],
+        [2,0,0,1,1,0,0,2],
+        [0,1,0,2,2,0,1,0]
+      ],
+      [ // 6 random-ish challenge
+        [2,1,2,1,2,1,2,1],
+        [1,2,1,2,1,2,1,2],
+        [2,1,2,1,2,1,2,1],
+        [1,2,1,2,1,2,1,2],
+        [2,1,2,1,2,1,2,1],
+        [1,2,1,2,1,2,1,2]
+      ]
+    ];
+
+    function normalizeSpeed(){
+      const spd=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
+      if(spd>0){ball.vx=(ball.vx/spd)*BALL_SPEED;ball.vy=(ball.vy/spd)*BALL_SPEED;}
+    }
+    function resetBall(){const R=6;ball={x:paddle.x,y:H-paddle.h-10-R,vx:0,vy:-BALL_SPEED,r:R,launched:false};}
+    function launchBall(){if(ball&&!ball.launched){ball.launched=true;ball.vx=0;ball.vy=-BALL_SPEED;}}
+    function loadLevel(lvl){
+      currentLevel=Math.max(1,Math.min(LEVELS.length,lvl));
+      const layout=LEVELS[currentLevel-1];
+      bricks=[];
+      for(let r=0;r<layout.length;r++)for(let c=0;c<BRICK_COLS;c++){
+        const v=layout[r][c]||0;
+        if(v>0)bricks.push({x:c*(BRICK_W+BRICK_PAD)+1,y:BRICK_TOP+r*(BRICK_H+BRICK_PAD),w:BRICK_W,h:BRICK_H,color:COLORS[r%COLORS.length],alive:true,hits:v});
+      }
+      resetBall();
+      updateHud();
+    }
+    function reset(){
+      paddle={x:W/2,w:70,h:12};
+      score=0;lives=3;currentLevel=1;
+      loadLevel(1);
+    }
+    function updateHud(){
+      document.getElementById('hud-score').textContent=score;
+      document.getElementById('hud-lives').textContent=lives;
+      document.getElementById('hud-level').textContent=currentLevel;
+    }
+    function nextLevel(){
+      endModal.classList.add('hidden');
+      if(currentLevel<LEVELS.length){
+        loadLevel(currentLevel+1);
+      }else{
+        reset();loadLevel(1);
+      }
+      state='playing';launchBall();overlay.classList.add('hidden');
+    }
+    const LEVEL_NAMES=['经典全墙','棋盘格','钻石阵','堡垒','稀疏行','双重挑战'];
+    function renderLevelGrid(grid,onClick){
+      grid.innerHTML='';
+      for(let i=0;i<LEVELS.length;i++){
+        const card=document.createElement('div');card.className='level-card';
+        card.innerHTML='<div class="num">'+(i+1)+'</div><div class="name">'+LEVEL_NAMES[i]+'</div>';
+        card.addEventListener('click',(e)=>{e.stopPropagation();e.preventDefault();onClick(i+1);});
+        grid.appendChild(card);
+      }
+    }
+    function startLevel(lvl){
+      endModal.classList.add('hidden');closeLevelSelect();
+      reset();score=0;lives=3;
+      loadLevel(lvl);
+      state='playing';launchBall();overlay.classList.add('hidden');
+    }
+    function openLevelSelect(){
+      renderLevelGrid(document.getElementById('level-grid'),startLevel);
+      document.getElementById('level-modal').classList.remove('hidden');
+    }
+    function closeLevelSelect(){document.getElementById('level-modal').classList.add('hidden');}
+    window.nextLevel=nextLevel;
+    window.openLevelSelect=openLevelSelect;
+    window.closeLevelSelect=closeLevelSelect;
+    window.startGame=function(){startLevel(1);};
+    window.pauseGame=function(){if(state==='playing')state='paused';else if(state==='paused')state='playing';};
+    renderLevelGrid(document.getElementById('start-level-grid'),startLevel);
+
+    let mouseX=null,keys={},touchDir=0;
+    function setPaddleFromClientX(clientX){
+      const r=canvas.getBoundingClientRect();
+      mouseX=(clientX-r.left)/r.width*W;
+    }
+    canvas.addEventListener('mousemove',e=>setPaddleFromClientX(e.clientX));
+    canvas.addEventListener('touchstart',e=>{if(e.touches.length)setPaddleFromClientX(e.touches[0].clientX);},{passive:true});
+    canvas.addEventListener('touchmove',e=>{if(e.touches.length)setPaddleFromClientX(e.touches[0].clientX);},{passive:true});
+    canvas.addEventListener('click',()=>{if(state==='playing')launchBall();});
+    document.addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'){if(state==='idle')startGame();else if(state==='playing')launchBall();}});
+    document.addEventListener('keyup',e=>{keys[e.code]=false;});
+
+    const btnL=document.getElementById('btn-left'),btnR=document.getElementById('btn-right');
+    function touchOn(dir){return e=>{e.preventDefault();touchDir=dir;};}
+    function touchOff(){touchDir=0;}
+    btnL.addEventListener('touchstart',touchOn(-1),{passive:false});
+    btnL.addEventListener('touchend',touchOff);
+    btnR.addEventListener('touchstart',touchOn(1),{passive:false});
+    btnR.addEventListener('touchend',touchOff);
+
+    function update(){
+      if(state!=='playing')return;
+      // paddle control: mouse/touch first, then keys/touch-buttons
+      if(mouseX!==null){
+        paddle.x=Math.max(paddle.w/2,Math.min(W-paddle.w/2,mouseX));
+        mouseX=null;
+      }else{
+        let dir=0;
+        if(keys['ArrowLeft']||keys['KeyA']||touchDir===-1)dir=-1;
+        if(keys['ArrowRight']||keys['KeyD']||touchDir===1)dir=1;
+        paddle.x=Math.max(paddle.w/2,Math.min(W-paddle.w/2,paddle.x+dir*6));
+      }
+      // ball
+      if(!ball.launched){ball.x=paddle.x;ball.y=H-paddle.h-10-ball.r;return;}
+      ball.x+=ball.vx;ball.y+=ball.vy;
+      // walls
+      if(ball.x-ball.r<0){ball.x=ball.r;ball.vx=Math.abs(ball.vx);}
+      if(ball.x+ball.r>W){ball.x=W-ball.r;ball.vx=-Math.abs(ball.vx);}
+      if(ball.y-ball.r<0){ball.y=ball.r;ball.vy=Math.abs(ball.vy);}
+      // bottom
+      if(ball.y+ball.r>H){lives--;updateHud();if(lives<=0){state='dead';if(score>best){best=score;localStorage.setItem('breakoutBest',best);document.getElementById('hud-best').textContent=best;}document.getElementById('end-title').textContent='💥 游戏结束';document.getElementById('end-subtitle').textContent='得分: '+score;document.getElementById('end-next').classList.add('hidden');endModal.classList.remove('hidden');return;}resetBall();}
+      // paddle bounce
+      if(ball.vy>0&&ball.y+ball.r>=H-paddle.h-10&&ball.y-ball.r<=H-10&&ball.x>=paddle.x-paddle.w/2&&ball.x<=paddle.x+paddle.w/2){
+        ball.vy=-Math.abs(ball.vy);
+        ball.vx+=((ball.x-paddle.x)/(paddle.w/2))*3;
+        normalizeSpeed();
+        ball.y=H-paddle.h-10-ball.r-0.5;
+      }
+      // bricks - resolve collision by smallest overlap
+      for(const b of bricks){
+        if(!b.alive)continue;
+        if(ball.x+ball.r>b.x&&ball.x-ball.r<b.x+b.w&&ball.y+ball.r>b.y&&ball.y-ball.r<b.y+b.h){
+          b.hits--;
+          if(b.hits<=0){b.alive=false;score+=10;}
+          const overlapLeft=(ball.x+ball.r)-b.x;
+          const overlapRight=(b.x+b.w)-(ball.x-ball.r);
+          const overlapTop=(ball.y+ball.r)-b.y;
+          const overlapBottom=(b.y+b.h)-(ball.y-ball.r);
+          const min=Math.min(overlapLeft,overlapRight,overlapTop,overlapBottom);
+          if(min===overlapLeft){ball.vx=-Math.abs(ball.vx);ball.x=b.x-ball.r-0.5;}
+          else if(min===overlapRight){ball.vx=Math.abs(ball.vx);ball.x=b.x+b.w+ball.r+0.5;}
+          else if(min===overlapTop){ball.vy=-Math.abs(ball.vy);ball.y=b.y-ball.r-0.5;}
+          else{ball.vy=Math.abs(ball.vy);ball.y=b.y+b.h+ball.r+0.5;}
+          updateHud();break;
+        }
+      }
+      if(bricks.every(b=>!b.alive)){
+        state='won';
+        if(currentLevel===unlockedLevel&&unlockedLevel<LEVELS.length){unlockedLevel++;localStorage.setItem('breakoutUnlocked',unlockedLevel);}
+        if(score>best){best=score;localStorage.setItem('breakoutBest',best);document.getElementById('hud-best').textContent=best;}
+        if(currentLevel<LEVELS.length){
+          document.getElementById('end-title').textContent='🎉 第 '+currentLevel+' 关通关！';
+          document.getElementById('end-subtitle').textContent='得分: '+score;
+          document.getElementById('end-next').classList.remove('hidden');
+        }else{
+          document.getElementById('end-title').textContent='🏆 全部通关！';
+          document.getElementById('end-subtitle').textContent='最终得分: '+score;
+          document.getElementById('end-next').classList.add('hidden');
+        }
+        endModal.classList.remove('hidden');
+      }
+    }
+
+    function render(){
+      ctx.fillStyle='#0a0a1a';ctx.fillRect(0,0,W,H);
+      // bricks
+      for(const b of bricks){
+        if(!b.alive)continue;
+        ctx.fillStyle=b.color;ctx.fillRect(b.x,b.y,b.w,b.h);
+        if(b.hits>1){ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(b.x,b.y,b.w,b.h);ctx.fillStyle='#fff';ctx.font='10px sans-serif';ctx.fillText(b.hits,b.x+b.w/2-3,b.y+b.h/2+3);}
+      }
+      // paddle
+      ctx.fillStyle='#4d96ff';ctx.fillRect(paddle.x-paddle.w/2,H-paddle.h-10,paddle.w,paddle.h);
+      // ball
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fill();
+    }
+
+    function loop(){update();render();requestAnimationFrame(loop);}
+    reset();
+    loop();
+  })();
+
+  /* === 8-bit Music === */
+  (function(){
+    let ctx,musicOn=true,playing=false,intervalId=null;
+    const NOTES={C4:262,D4:294,E4:330,F4:349,G4:392,A4:440,B4:494,C5:523,D5:587,E5:659,F5:698,G5:784};
+    const {C4,D4,E4,F4,G4,A4,B4,C5,D5,E5,F5,G5}=NOTES;
+    // Upbeat arcade breakout melody
+    const melody=[
+      [E5,.1],[D5,.1],[C5,.1],[B4,.1],[C5,.1],[D5,.1],[E5,.15],[G5,.15],
+      [A4,.1],[B4,.1],[C5,.1],[D5,.1],[E5,.1],[C5,.1],[A4,.15],[G4,.15],
+      [B4,.1],[C5,.1],[D5,.1],[E5,.1],[F5,.1],[E5,.1],[D5,.1],[C5,.1],
+      [G4,.1],[A4,.1],[B4,.1],[C5,.15],[B4,.1],[A4,.1],[G4,.2]
+    ];
+    let pos=0;
+    function playNote(freq,dur){
+      if(!ctx)return;
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type='square';o.frequency.value=freq;
+      g.gain.setValueAtTime(0.1,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+dur*0.85);
+      o.connect(g);g.connect(ctx.destination);
+      o.start();o.stop(ctx.currentTime+dur);
+    }
+    function step(){
+      if(!musicOn||!playing)return;
+      const[n,d]=melody[pos%melody.length];
+      playNote(n,d*0.9);pos++;
+    }
+    function startMusic(){
+      if(!ctx)ctx=new(window.AudioContext||window.webkitAudioContext)();
+      if(ctx.state==='suspended')ctx.resume();
+      if(!playing){playing=true;pos=0;intervalId=setInterval(step,120);}
+    }
+    ['click','keydown','touchstart'].forEach(evt=>document.addEventListener(evt,startMusic,{once:true}));
+  })();
+  </script>
+</body>
+</html>

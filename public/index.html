@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>沫芒游境</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/light-home.css">
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div class="header-top">
+        <div class="brand">
+          <span class="brand-emoji">🎮</span>
+          <div class="brand-text">
+            <h1>沫芒游境</h1>
+            <p>手机 · 对战 · 单人</p>
+          </div>
+        </div>
+        <div class="profile-area" id="profile-area">
+          <button id="login-btn" class="btn btn-ghost login-btn">登录 / 注册</button>
+          <div id="user-menu" class="user-menu hidden">
+            <button id="user-name-btn" class="btn btn-ghost user-name-btn"></button>
+            <div id="user-dropdown" class="user-dropdown hidden">
+              <button id="profile-btn" class="dropdown-item">个人主页</button>
+              <button id="logout-btn" class="dropdown-item dropdown-danger">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <nav class="category-tabs">
+      <button class="tab active" data-cat="all">全部</button>
+      <button class="tab" data-cat="single">单人</button>
+      <button class="tab" data-cat="battle">对战</button>
+      <button class="tab" data-cat="ai">AI 对战</button>
+    </nav>
+
+    <main class="game-grid" id="game-grid">
+      <a href="/games/gomoku.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">⚫⚪</div>
+        <h2>五子棋</h2>
+        <p>单机 AI、本地双人对弈、在线开黑、聊天贴纸</p>
+        <span class="tag">策略 · 对战/AI</span>
+      </a>
+
+      <a href="/games/pong.html" class="game-card" data-cats="battle">
+        <div class="card-icon">🏓</div>
+        <h2>乒乓对决</h2>
+        <p>竖屏同屏 PK 或联网实时对战，5 分制快节奏</p>
+        <span class="tag">实时 · 对战/AI</span>
+      </a>
+
+      <a href="/games/drawguess.html" class="game-card" data-cats="single battle ai">
+        <div class="card-icon">🎨</div>
+        <h2>AI 画图猜词</h2>
+        <p>看图猜成语，AI 为你作画</p>
+        <span class="tag">猜词 · 对战</span>
+      </a>
+
+      <a href="/games/draw2guess.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">✏️</div>
+        <h2>你画我猜</h2>
+        <p>一人画、一人猜，含 AI 裁判打分</p>
+        <span class="tag">对战 · AI 裁判</span>
+      </a>
+
+      <a href="/games/tictactoe.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">⭕❌</div>
+        <h2>井字棋</h2>
+        <p>人机、本地、在线三种模式，AI 不可战胜</p>
+        <span class="tag">休闲 · 对战/AI</span>
+      </a>
+
+      <a href="/games/connect4.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">🔴🟡</div>
+        <h2>四子连珠</h2>
+        <p>经典 Connect 4，AI 对战或在线对战</p>
+        <span class="tag">策略 · 对战/AI</span>
+      </a>
+
+      <a href="/games/rps.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">✊✂️🖐️</div>
+        <h2>剪刀石头布</h2>
+        <p>在线三局两胜，实时同步出拳</p>
+        <span class="tag">对战 · 即时/AI</span>
+      </a>
+
+      <a href="/games/memory.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">🧠</div>
+        <h2>记忆翻牌</h2>
+        <p>单人挑战、本地双人对战或在线比拼记忆力</p>
+        <span class="tag">休闲 · 对战/AI</span>
+      </a>
+
+      <a href="/games/dots.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">🔵</div>
+        <h2>点格棋</h2>
+        <p>本地或在线 4×4 点格棋，划线占格得分</p>
+        <span class="tag">策略 · 对战/AI</span>
+      </a>
+
+      <a href="/games/othello.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">⚫⚪</div>
+        <h2>黑白棋</h2>
+        <p>经典 8×8 翻转棋子策略对战</p>
+        <span class="tag">策略 · 对战/AI</span>
+      </a>
+
+      <a href="/games/bullsandcows.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">🔢</div>
+        <h2>猜数字</h2>
+        <p>4 位不重复数字，A 对位 B 错位</p>
+        <span class="tag">推理 · 对战/AI</span>
+      </a>
+
+      <a href="/games/blackjack.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">🃏</div>
+        <h2>21 点</h2>
+        <p>双人挑战庄家，要牌停牌比大小</p>
+        <span class="tag">纸牌 · 对战/AI</span>
+      </a>
+
+      <a href="/games/ulttt.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">⭕❌⭕</div>
+        <h2>终极井字棋</h2>
+        <p>9 个小井字棋组成大棋盘</p>
+        <span class="tag">策略 · 对战/AI</span>
+      </a>
+
+      <a href="/games/minichess.html" class="game-card" data-cats="battle ai">
+        <div class="card-icon">♟️</div>
+        <h2>象棋迷你版</h2>
+        <p>5×6 小棋盘，简化棋子规则</p>
+        <span class="tag">策略 · 对战/AI</span>
+      </a>
+
+      <a href="/games/2048.html" class="game-card" data-cats="single">
+        <div class="card-icon">🔢</div>
+        <h2>2048</h2>
+        <p>滑动合成，挑战最高分</p>
+        <span class="tag">单人 · 益智</span>
+      </a>
+
+      <a href="/games/racing.html" class="game-card" data-cats="battle">
+        <div class="card-icon">🏎️</div>
+        <h2>极速狂飙</h2>
+        <p>本地单人或在线双人联机狂飙，合作躲避车辆</p>
+        <span class="tag">竞速 · 对战</span>
+      </a>
+
+      <a href="/games/snake.html" class="game-card" data-cats="single">
+        <div class="card-icon">🐍</div>
+        <h2>经典贪吃蛇</h2>
+        <p>吃食物长大，别撞墙或撞自己</p>
+        <span class="tag">单人 · 经典</span>
+      </a>
+
+      <a href="/games/breakout.html" class="game-card" data-cats="single">
+        <div class="card-icon">🧱</div>
+        <h2>打砖块</h2>
+        <p>用挡板弹球打碎所有砖块</p>
+        <span class="tag">单人 · 反应</span>
+      </a>
+
+      <a href="/games/shooter.html" class="game-card" data-cats="single">
+        <div class="card-icon">🚀</div>
+        <h2>太空射击</h2>
+        <p>消灭入侵的外星飞船</p>
+        <span class="tag">单人 · 射击</span>
+      </a>
+
+      <a href="/games/portal.html" class="game-card" data-cats="single">
+        <div class="card-icon">🌀</div>
+        <h2>反应传送门</h2>
+        <p>测试你的反应速度，快速点击目标</p>
+        <span class="tag">单人 · 反应</span>
+      </a>
+
+      <a href="/games/falling.html" class="game-card" data-cats="single">
+        <div class="card-icon">📦</div>
+        <h2>天降奇物</h2>
+        <p>接住宝物得分，躲开炸弹！</p>
+        <span class="tag">单人 · 反应</span>
+      </a>
+
+      <a href="/games/parking-puzzle.html" class="game-card" data-cats="single">
+        <div class="card-icon">🚗</div>
+        <h2>停车接客</h2>
+        <p>移动车辆接乘客，清空站台通关</p>
+        <span class="tag">单人 · 解谜</span>
+      </a>
+
+      <a href="/games/parking-exit.html" class="game-card" data-cats="single">
+        <div class="card-icon">🅿️</div>
+        <h2>停车接客v2</h2>
+        <p>8方向环轨停车接客，清空候车区通关</p>
+        <span class="tag">单人 · 解谜</span>
+      </a>
+    </main>
+
+    <button id="room-list-btn" class="room-list-fab" aria-label="房间列表">🏠 房间列表</button>
+
+    <button id="quick-match-btn" class="quick-match-fab" aria-label="快速匹配">⚡ 快速匹配</button>
+
+    <div id="quick-match-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>⚡ 快速匹配</h2>
+        <p>选择一个在线游戏，系统会自动为你匹配一名对手。</p>
+        <select id="qm-game">
+          <option value="gomoku">五子棋</option>
+          <option value="pong">乒乓对决</option>
+          <option value="tictactoe">井字棋</option>
+          <option value="connect4">四子连珠</option>
+          <option value="drawguess">AI 画图猜词</option>
+          <option value="rps">剪刀石头布</option>
+          <option value="memory">记忆翻牌</option>
+          <option value="dots">点格棋</option>
+          <option value="othello">黑白棋</option>
+          <option value="bullsandcows">猜数字</option>
+          <option value="blackjack">21 点</option>
+          <option value="ulttt">终极井字棋</option>
+          <option value="minichess">象棋迷你版</option>
+          <option value="snake">贪吃蛇对战</option>
+          <option value="racing">极速狂飙</option>
+        </select>
+        <input id="qm-name" type="text" maxlength="12" placeholder="你的昵称" value="Player">
+        <div id="qm-status" class="qm-status"></div>
+        <div class="modal-actions">
+          <button id="qm-start" class="btn primary">开始匹配</button>
+          <button id="qm-cancel" class="btn secondary">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="room-list-modal" class="modal hidden">
+      <div class="modal-content room-list-content">
+        <h2>🏠 房间列表</h2>
+        <p class="room-list-subtitle">输入 6 位数字房间号加入，或创建通用房间后再选游戏。</p>
+
+        <div class="room-section">
+          <label class="section-label">🔍 快速加入</label>
+          <div class="room-quick-join">
+            <input id="quick-room-id" type="text" inputmode="numeric" maxlength="6" placeholder="输入 6 位房间号" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;">
+            <button id="quick-room-join" class="btn primary">加入</button>
+          </div>
+        </div>
+
+        <div class="room-section">
+          <label class="section-label">➕ 创建通用房间</label>
+          <div class="room-create-row">
+            <input id="universal-name" type="text" maxlength="12" placeholder="你的昵称" value="Player">
+            <label class="toggle-inline" title="公开房间会显示在下方的房间列表中，任何人都能加入">
+              <input type="checkbox" id="universal-public" checked>
+              <span id="universal-public-text">公开房间（可被搜索）</span>
+            </label>
+          </div>
+          <button id="create-universal-room" class="btn secondary" style="margin-top:8px;">创建通用房间</button>
+        </div>
+
+        <div class="room-section">
+          <label class="section-label">🌐 公开房间列表</label>
+          <div id="room-list" class="room-list">
+            <div class="room-empty">正在加载房间…</div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="room-refresh" class="btn primary">刷新</button>
+          <button id="room-close" class="btn secondary">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="auth-modal" class="modal hidden">
+      <div class="modal-content auth-content">
+        <h2 id="auth-title">登录</h2>
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-mode="login">登录</button>
+          <button class="auth-tab" data-mode="register">注册</button>
+        </div>
+        <form id="auth-form">
+          <div class="form-group">
+            <label for="auth-account">账号</label>
+            <input id="auth-account" type="text" autocomplete="username" required>
+          </div>
+          <div class="form-group">
+            <label for="auth-password">密码</label>
+            <input id="auth-password" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="form-group hidden" id="name-group">
+            <label for="auth-name">昵称</label>
+            <input id="auth-name" type="text" autocomplete="name">
+          </div>
+          <div id="auth-message" class="auth-message"></div>
+        </form>
+        <div id="random-register-box" class="random-register-box hidden">
+          <div class="random-register-actions">
+            <button type="button" id="random-register-btn" class="btn secondary">🎲 随机注册</button>
+            <button type="button" id="random-lobster-btn" class="btn btn-ghost random-emoji-btn" aria-label="随机生成">🦞</button>
+          </div>
+        </div>
+        <div id="random-result" class="random-result hidden">
+          <div class="form-group">
+            <label for="random-account-display">账号</label>
+            <input id="random-account-display" type="text" readonly>
+          </div>
+          <div class="form-group">
+            <label for="random-password-display">密码</label>
+            <input id="random-password-display" type="text" readonly>
+          </div>
+          <div class="random-result-hint" id="random-result-hint">随机生成的账号密码已填入表单。</div>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" form="auth-form" class="btn primary" id="auth-submit">登录</button>
+          <button type="button" id="auth-cancel" class="btn secondary">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="profile-modal" class="modal hidden">
+      <div class="modal-content profile-content">
+        <h2>个人主页</h2>
+        <div class="profile-info">
+          <div class="profile-avatar">🦞</div>
+          <div class="profile-meta">
+            <div class="profile-name-row">
+              <strong id="profile-name">-</strong>
+              <button id="rename-toggle" class="btn btn-ghost rename-btn">改名</button>
+            </div>
+            <div class="profile-account" id="profile-account">-</div>
+          </div>
+        </div>
+        <form id="rename-form" class="rename-form hidden">
+          <div class="form-group">
+            <label for="rename-input">新昵称</label>
+            <input id="rename-input" type="text" required>
+          </div>
+          <div id="rename-message" class="auth-message"></div>
+          <div class="modal-actions">
+            <button type="submit" class="btn primary">确认改名</button>
+            <button type="button" id="rename-cancel" class="btn secondary">取消</button>
+          </div>
+        </form>
+        <div class="profile-records">
+          <h3>🏆 游戏记录</h3>
+          <div id="records-list" class="records-list">
+            <div class="record-empty">暂无记录</div>
+          </div>
+        </div>
+        <div class="modal-actions profile-actions">
+          <button id="profile-close" class="btn secondary">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="home-footer">
+      <p>💙 沫芒游境 · 欢迎来玩</p>
+    </footer>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/auth.js"></script>
+  <script>
+    const GAME_NAMES = {
+      gomoku: '五子棋', pong: '乒乓对决', drawguess: 'AI 画图猜词', draw2guess: '你画我猜',
+      tictactoe: '井字棋', connect4: '四子连珠', rps: '剪刀石头布', memory: '记忆翻牌',
+      dots: '点格棋', snake: '贪吃蛇对战', 2048: '2048', racing: '极速狂飙',
+      'snake-single': '经典贪吃蛇', breakout: '打砖块', shooter: '太空射击',
+      falling: '天降奇物', 'parking-puzzle': '停车接客',
+      othello: '黑白棋', bullsandcows: '猜数字', blackjack: '21 点', ulttt: '终极井字棋', minichess: '象棋迷你版'
+    };
+    function gameName(key) { return GAME_NAMES[key] || key; }
+
+    const socket = io();
+    const CLIENT_ID = localStorage.getItem('gameBoxClientId') || ('c' + Math.random().toString(36).substring(2, 10));
+    localStorage.setItem('gameBoxClientId', CLIENT_ID);
+
+    /* ===== Category tabs ===== */
+    document.querySelectorAll('.category-tabs .tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.category-tabs .tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const cat = tab.dataset.cat;
+        document.querySelectorAll('.game-card').forEach(card => {
+          const show = cat === 'all' || card.dataset.cats.split(' ').includes(cat);
+          card.style.display = show ? 'block' : 'none';
+        });
+      });
+    });
+
+    /* ===== Auth UI ===== */
+    const loginBtn = document.getElementById('login-btn');
+    const userMenu = document.getElementById('user-menu');
+    const userNameBtn = document.getElementById('user-name-btn');
+    const userDropdown = document.getElementById('user-dropdown');
+    const profileBtn = document.getElementById('profile-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+
+    const authModal = document.getElementById('auth-modal');
+    const authTitle = document.getElementById('auth-title');
+    const authTabs = document.querySelectorAll('.auth-tab');
+    const authForm = document.getElementById('auth-form');
+    const nameGroup = document.getElementById('name-group');
+    const authAccount = document.getElementById('auth-account');
+    const authPassword = document.getElementById('auth-password');
+    const authName = document.getElementById('auth-name');
+    const authMessage = document.getElementById('auth-message');
+    const authSubmit = document.getElementById('auth-submit');
+    const authCancel = document.getElementById('auth-cancel');
+    const randomRegisterBox = document.getElementById('random-register-box');
+    const randomRegisterBtn = document.getElementById('random-register-btn');
+    const randomLobsterBtn = document.getElementById('random-lobster-btn');
+    const randomResult = document.getElementById('random-result');
+    const randomAccountDisplay = document.getElementById('random-account-display');
+    const randomPasswordDisplay = document.getElementById('random-password-display');
+    const randomResultHint = document.getElementById('random-result-hint');
+
+    const profileModal = document.getElementById('profile-modal');
+    const profileName = document.getElementById('profile-name');
+    const profileAccount = document.getElementById('profile-account');
+    const renameToggle = document.getElementById('rename-toggle');
+    const renameForm = document.getElementById('rename-form');
+    const renameInput = document.getElementById('rename-input');
+    const renameMessage = document.getElementById('rename-message');
+    const renameCancel = document.getElementById('rename-cancel');
+    const recordsList = document.getElementById('records-list');
+    const profileClose = document.getElementById('profile-close');
+
+    let authMode = 'login';
+    let pendingRandomRegister = false;
+
+    function generateRandomCredentials() {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      const letters = 'abcdefghijklmnopqrstuvwxyz';
+      let account = 'player';
+      for (let i = 0; i < 4; i++) account += chars.charAt(Math.floor(Math.random() * chars.length));
+      let password = '';
+      for (let i = 0; i < 4; i++) password += letters.charAt(Math.floor(Math.random() * letters.length));
+      password += ' ';
+      for (let i = 0; i < 4; i++) password += letters.charAt(Math.floor(Math.random() * letters.length));
+      return { account, password, name: account };
+    }
+
+    function fillRandomCredentials() {
+      const creds = generateRandomCredentials();
+      authAccount.value = creds.account;
+      authPassword.value = creds.password;
+      authName.value = creds.name;
+      randomAccountDisplay.value = creds.account;
+      randomPasswordDisplay.value = creds.password;
+      randomResult.classList.remove('hidden');
+      randomResultHint.textContent = '随机生成的账号密码已填入表单，可直接点击注册或修改。';
+      authMessage.textContent = '';
+      return creds;
+    }
+
+    function showRandomResult() {
+      authForm.classList.add('hidden');
+      randomRegisterBox.classList.add('hidden');
+      randomResult.classList.remove('hidden');
+      authSubmit.classList.add('hidden');
+      authCancel.textContent = '关闭';
+      randomResultHint.textContent = '已自动注册并登录，请保存好账号密码。';
+    }
+
+    function updateProfileArea() {
+      if (Auth.isLoggedIn()) {
+        loginBtn.classList.add('hidden');
+        userMenu.classList.remove('hidden');
+        userNameBtn.textContent = Auth.name() || Auth.user().account;
+      } else {
+        loginBtn.classList.remove('hidden');
+        userMenu.classList.add('hidden');
+        userDropdown.classList.add('hidden');
+      }
+    }
+
+    function showAuth(mode) {
+      authMode = mode;
+      authTabs.forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+      authTitle.textContent = mode === 'login' ? '登录' : '注册';
+      authSubmit.textContent = mode === 'login' ? '登录' : '注册';
+      nameGroup.classList.toggle('hidden', mode === 'login');
+      authMessage.textContent = '';
+      randomRegisterBox.classList.toggle('hidden', mode === 'login');
+      randomResult.classList.add('hidden');
+      authForm.classList.remove('hidden');
+      authSubmit.classList.remove('hidden');
+      authCancel.textContent = '取消';
+      pendingRandomRegister = false;
+      authModal.classList.remove('hidden');
+    }
+
+    function hideAuth() {
+      authModal.classList.add('hidden');
+      authForm.reset();
+      authMessage.textContent = '';
+      randomResult.classList.add('hidden');
+      authForm.classList.remove('hidden');
+      randomRegisterBox.classList.add('hidden');
+      authSubmit.classList.remove('hidden');
+      authCancel.textContent = '取消';
+      pendingRandomRegister = false;
+    }
+
+    loginBtn.addEventListener('click', () => showAuth('login'));
+    authCancel.addEventListener('click', hideAuth);
+    authTabs.forEach(tab => tab.addEventListener('click', () => showAuth(tab.dataset.mode)));
+
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      authMessage.textContent = '';
+      const account = authAccount.value.trim();
+      const password = authPassword.value;
+      const name = authName.value.trim();
+      if (!account || !password) return;
+      authSubmit.disabled = true;
+      try {
+        if (authMode === 'login') {
+          await Auth.login(account, password);
+          hideAuth();
+        } else {
+          if (!name) { authMessage.textContent = '请输入昵称'; authSubmit.disabled = false; return; }
+          await Auth.register(account, password, name);
+          if (pendingRandomRegister) {
+            showRandomResult();
+          } else {
+            hideAuth();
+          }
+        }
+        updateProfileArea();
+      } catch (err) {
+        authMessage.textContent = err.message || '请求失败';
+      } finally {
+        authSubmit.disabled = false;
+        pendingRandomRegister = false;
+      }
+    });
+
+    randomRegisterBtn.addEventListener('click', () => {
+      fillRandomCredentials();
+      pendingRandomRegister = true;
+      setTimeout(() => authForm.requestSubmit(), 0);
+    });
+
+    randomLobsterBtn.addEventListener('click', () => {
+      fillRandomCredentials();
+      pendingRandomRegister = false;
+    });
+
+    userNameBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      userDropdown.classList.toggle('hidden');
+    });
+    document.addEventListener('click', () => userDropdown.classList.add('hidden'));
+    userDropdown.addEventListener('click', (e) => e.stopPropagation());
+
+    logoutBtn.addEventListener('click', () => {
+      Auth.logout();
+      updateProfileArea();
+      userDropdown.classList.add('hidden');
+    });
+
+    function renderRecords(data) {
+      const records = data && data.records ? data.records : {};
+      const games = Object.keys(records);
+      if (!games.length) {
+        recordsList.innerHTML = '<div class="record-empty">暂无记录</div>';
+        return;
+      }
+      recordsList.innerHTML = games.map(game => {
+        const scores = Array.isArray(records[game]) ? records[game] : [];
+        const top = scores.slice(0, 3).map(s => `<span class="record-score">${s && typeof s === 'object' ? s.score : s}</span>`).join('');
+        return `
+          <div class="record-item">
+            <span class="record-game">${gameName(game)}</span>
+            <div class="record-scores">${top || '<span class="record-score">-</span>'}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function openProfile() {
+      const user = Auth.user();
+      if (!user) return;
+      profileName.textContent = user.name;
+      profileAccount.textContent = '账号：' + user.account;
+      renameInput.value = user.name;
+      renameForm.classList.add('hidden');
+      renameMessage.textContent = '';
+      recordsList.innerHTML = '<div class="record-empty">加载中…</div>';
+      profileModal.classList.remove('hidden');
+      userDropdown.classList.add('hidden');
+      try {
+        const data = await Auth.getRecords();
+        renderRecords(data);
+      } catch (err) {
+        recordsList.innerHTML = '<div class="record-empty">加载失败：' + (err.message || '未知错误') + '</div>';
+      }
+    }
+
+    profileBtn.addEventListener('click', openProfile);
+    profileClose.addEventListener('click', () => profileModal.classList.add('hidden'));
+
+    renameToggle.addEventListener('click', () => renameForm.classList.toggle('hidden'));
+    renameCancel.addEventListener('click', () => {
+      renameForm.classList.add('hidden');
+      renameMessage.textContent = '';
+    });
+    renameForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      renameMessage.textContent = '';
+      const newName = renameInput.value.trim();
+      if (!newName) return;
+      try {
+        await Auth.rename(newName);
+        profileName.textContent = newName;
+        updateProfileArea();
+        renameForm.classList.add('hidden');
+      } catch (err) {
+        renameMessage.textContent = err.message || '改名失败';
+      }
+    });
+
+    document.addEventListener('gameBoxUserChanged', () => updateProfileArea());
+    updateProfileArea();
+
+    /* ===== Room list ===== */
+    const roomListBtn = document.getElementById('room-list-btn');
+    const roomListModal = document.getElementById('room-list-modal');
+    const roomListEl = document.getElementById('room-list');
+    const roomRefresh = document.getElementById('room-refresh');
+    const roomClose = document.getElementById('room-close');
+    const universalPublicCheck = document.getElementById('universal-public');
+    const universalPublicText = document.getElementById('universal-public-text');
+
+    const GAME_ICONS = {
+      gomoku: '⚫⚪', pong: '🏓', drawguess: '🎨', draw2guess: '✏️', tictactoe: '⭕❌',
+      connect4: '🔴🟡', rps: '✊✂️🖐️', memory: '🧠', dots: '🔵', snake: '🐍', racing: '🏎️',
+      othello: '⚫⚪', bullsandcows: '🔢', blackjack: '🃏', ulttt: '⭕❌⭕', minichess: '♟️'
+    };
+    function gameIcon(key) { return GAME_ICONS[key] || '🎮'; }
+
+    function updateUniversalPublicLabel() {
+      universalPublicText.textContent = universalPublicCheck.checked ? '公开房间（可被搜索）' : '私有房间（仅通过房间号加入）';
+    }
+    universalPublicCheck.addEventListener('change', updateUniversalPublicLabel);
+    updateUniversalPublicLabel();
+
+    function statusText(status) {
+      if (status === 'waiting') return '等待中';
+      if (status === 'playing' || status === 'choosing' || status === 'drawing') return '进行中';
+      return status || '等待中';
+    }
+
+    async function loadRooms() {
+      roomListEl.innerHTML = '<div class="room-empty">正在加载房间…</div>';
+      try {
+        const res = await fetch('/api/rooms');
+        if (!res.ok) throw new Error('服务器错误');
+        const data = await res.json();
+        const rooms = Array.isArray(data.rooms) ? data.rooms : [];
+        if (!rooms.length) {
+          roomListEl.innerHTML = '<div class="room-empty">暂无公开房间<br><small>创建公开房间或输入房间号加入</small></div>';
+          return;
+        }
+        roomListEl.innerHTML = rooms.map(r => {
+          const gameType = r.gameType || 'unknown';
+          const players = Array.isArray(r.players) ? r.players : [];
+          const host = players.find(p => p.isHost) || players[0];
+          const hostName = host ? host.name : '玩家';
+          const count = players.length;
+          const href = gameType === 'lobby'
+            ? `/games/lobby.html?room=${encodeURIComponent(r.id)}`
+            : `/games/${gameType}.html?room=${encodeURIComponent(r.id)}`;
+          return `
+            <div class="room-item">
+              <div class="room-info">
+                <div class="room-game-row">
+                  <span class="room-icon">${gameIcon(gameType)}</span>
+                  <strong>${gameName(gameType)}</strong>
+                  <span class="room-status ${r.status === 'waiting' ? 'waiting' : 'playing'}">${statusText(r.status)}</span>
+                </div>
+                <span class="room-meta">房间号 ${r.id} · ${hostName} 的房间 · ${count}/2 人</span>
+              </div>
+              <a href="${href}" class="btn primary room-join">加入</a>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        roomListEl.innerHTML = '<div class="room-empty">加载失败：' + (err.message || '未知错误') + '</div>';
+      }
+    }
+
+    roomListBtn.addEventListener('click', () => { roomListModal.classList.remove('hidden'); loadRooms(); });
+    roomRefresh.addEventListener('click', loadRooms);
+    roomClose.addEventListener('click', () => roomListModal.classList.add('hidden'));
+
+    async function joinRoomByCode(code) {
+      code = String(code).trim();
+      if (!/^\d{6}$/.test(code)) { alert('请输入 6 位数字房间号'); return; }
+      try {
+        const res = await fetch(`/api/rooms/${code}`);
+        if (!res.ok) { alert('房间不存在或已关闭'); return; }
+        const data = await res.json();
+        const gameType = data.gameType || 'gomoku';
+        if (gameType === 'lobby') window.location.href = `/games/lobby.html?room=${encodeURIComponent(code)}`;
+        else window.location.href = `/games/${gameType}.html?room=${encodeURIComponent(code)}`;
+      } catch (e) { alert('查询房间失败'); }
+    }
+
+    document.getElementById('quick-room-join').addEventListener('click', () => joinRoomByCode(document.getElementById('quick-room-id').value));
+    document.getElementById('quick-room-id').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoomByCode(e.target.value); });
+    document.getElementById('create-universal-room').addEventListener('click', () => {
+      const name = document.getElementById('universal-name').value.trim() || Auth.name() || 'Player';
+      const isPublic = universalPublicCheck.checked;
+      socket.emit('createUniversalRoom', { playerName: name, clientId: CLIENT_ID, isPublic });
+    });
+    socket.on('roomCreated', ({ roomId, gameType }) => {
+      if (gameType === 'lobby') window.location.href = `/games/lobby.html?room=${encodeURIComponent(roomId)}`;
+    });
+
+    /* ===== Auto-join from shared link ===== */
+    (function autoJoinFromUrl() {
+      const code = new URLSearchParams(location.search).get('room');
+      if (code) joinRoomByCode(code);
+    })();
+
+    /* ===== Quick match ===== */
+    const fab = document.getElementById('quick-match-btn');
+    const modal = document.getElementById('quick-match-modal');
+    const qmGame = document.getElementById('qm-game');
+    const qmName = document.getElementById('qm-name');
+    const qmStatus = document.getElementById('qm-status');
+    const qmStart = document.getElementById('qm-start');
+    const qmCancel = document.getElementById('qm-cancel');
+    let qmWaiting = false;
+
+    function showModal() { modal.classList.remove('hidden'); qmStatus.textContent = ''; }
+    function hideModal() { modal.classList.add('hidden'); if (qmWaiting) { socket.emit('quickMatch:leave'); qmWaiting = false; } }
+
+    fab.addEventListener('click', showModal);
+    qmCancel.addEventListener('click', hideModal);
+    qmStart.addEventListener('click', () => {
+      const gameType = qmGame.value;
+      const name = qmName.value.trim() || Auth.name() || 'Player';
+      qmWaiting = true;
+      qmStatus.textContent = '正在寻找对手…';
+      socket.emit('quickMatch:join', { gameType, playerName: name, clientId: CLIENT_ID });
+    });
+
+    socket.on('quickMatch:waiting', () => { qmStatus.textContent = '正在寻找对手…'; });
+    socket.on('quickMatch:found', ({ gameType, roomId }) => {
+      qmStatus.textContent = '匹配成功！即将进入游戏…';
+      setTimeout(() => { window.location.href = `/games/${gameType}.html?room=${encodeURIComponent(roomId)}`; }, 800);
+    });
+    socket.on('error', ({ message }) => { qmStatus.textContent = '错误：' + message; qmWaiting = false; });
+  </script>
+</body>
+</html>

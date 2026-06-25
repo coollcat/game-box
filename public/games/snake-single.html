@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>经典贪吃蛇 - AI 游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .game-header { padding: 4px 0 6px; gap: 8px; }
+    .game-header h1 { font-size: 1.1rem; }
+    #snake-canvas { display: block; margin: 0 auto; border-radius: 12px; background: #0a0a1a; touch-action: none; }
+    .hud { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 0.85rem; color: #eee; background: rgba(255,255,255,0.06); border-radius: 10px; margin-bottom: 6px; }
+    .hud span { font-weight: 600; }
+    .controls { margin-top: 8px; display: flex; gap: 8px; justify-content: center; }
+    .canvas-wrap { position: relative; display: inline-block; }
+    .start-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,10,25,0.88); border-radius: 12px; color: #fff; z-index: 10; cursor: pointer; }
+    .start-overlay h2 { font-size: 1.4rem; margin-bottom: 8px; }
+    .start-overlay p { font-size: 0.85rem; color: #aaa; }
+    .touch-controls { display: none; justify-content: center; margin-top: 10px; }
+    .touch-grid { display: grid; grid-template-columns: 64px 64px 64px; grid-template-rows: 64px 64px; gap: 6px; }
+    .touch-btn { width: 64px; height: 64px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #fff; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; -webkit-user-drag: none; }
+    .touch-btn:active { background: rgba(255,255,255,0.2); }
+    .tg-center { grid-column: 2; grid-row: 1; }
+    .tg-left { grid-column: 1; grid-row: 2; }
+    .tg-down { grid-column: 2; grid-row: 2; }
+    .tg-right { grid-column: 3; grid-row: 2; }
+    @media (pointer: coarse) { .touch-controls { display: flex; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>🐍 经典贪吃蛇</h1>
+    </div>
+    <div class="hud">
+      <div>🍎 <span id="hud-score">0</span></div>
+      <div>⚡ <span id="hud-speed">1</span></div>
+      <div>🏆 <span id="hud-best">0</span></div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="snake-canvas" width="360" height="360"></canvas>
+      <div class="start-overlay" id="start-overlay">
+        <h2>🐍 经典贪吃蛇</h2>
+        <p>吃食物长大，别撞墙或撞自己！</p>
+        <p style="margin-top:12px;font-size:1rem;">点击 / 按空格开始</p>
+      </div>
+    </div>
+    <div class="touch-controls">
+      <div class="touch-grid">
+        <button class="touch-btn tg-center" id="btn-up">▲</button>
+        <button class="touch-btn tg-left" id="btn-left">◀</button>
+        <button class="touch-btn tg-down" id="btn-down">▼</button>
+        <button class="touch-btn tg-right" id="btn-right">▶</button>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn btn-primary" onclick="startGame()">▶ 开始</button>
+      <button class="btn btn-warning" onclick="pauseGame()">⏸ 暂停</button>
+    </div>
+  </div>
+  <div id="end-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="end-title">💀 Game Over</h2>
+      <p id="end-subtitle">得分: 0</p>
+      <button class="btn btn-primary" onclick="startGame()">再来一局</button>
+    </div>
+  </div>
+  <script>
+  (function(){
+    const canvas=document.getElementById('snake-canvas'),ctx=canvas.getContext('2d');
+    const W=canvas.width,H=canvas.height;
+    const CELL=20,COLS=W/CELL,ROWS=H/CELL;
+    const overlay=document.getElementById('start-overlay'),endModal=document.getElementById('end-modal');
+    let state='idle',snake,dir,nextDir,food,score,speed,tickTimer,best=+localStorage.getItem('snakeBest')||0;
+    document.getElementById('hud-best').textContent=best;
+
+    function reset(){
+      snake=[{x:Math.floor(COLS/2),y:Math.floor(ROWS/2)}];
+      dir={x:1,y:0};nextDir={x:1,y:0};
+      placeFood();score=0;speed=1;tickTimer=0;
+      updateHud();
+    }
+    function placeFood(){
+      let p;do{p={x:Math.floor(Math.random()*COLS),y:Math.floor(Math.random()*ROWS)};}
+      while(snake.some(s=>s.x===p.x&&s.y===p.y));
+      food=p;
+    }
+    function updateHud(){
+      document.getElementById('hud-score').textContent=score;
+      document.getElementById('hud-speed').textContent=speed;
+    }
+    window.startGame=function(){endModal.classList.add('hidden');overlay.classList.add('hidden');reset();state='playing';};
+    window.pauseGame=function(){if(state==='playing')state='paused';else if(state==='paused')state='playing';};
+    overlay.addEventListener('click',()=>{if(state==='idle')startGame();});
+
+    document.addEventListener('keydown',e=>{
+      if(e.code==='Space'&&state==='idle'){startGame();return;}
+      const map={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0},
+        KeyW:{x:0,y:-1},KeyS:{x:0,y:1},KeyA:{x:-1,y:0},KeyD:{x:1,y:0}};
+      const d=map[e.code];if(d&&!(d.x===-dir.x&&d.y===-dir.y))nextDir=d;
+    });
+
+    let touchStart=null;
+    canvas.addEventListener('touchstart',e=>{if(state==='idle'){startGame();return;}touchStart={x:e.touches[0].clientX,y:e.touches[0].clientY};},{passive:true});
+    canvas.addEventListener('touchend',e=>{
+      if(!touchStart)return;
+      const dx=e.changedTouches[0].clientX-touchStart.x,dy=e.changedTouches[0].clientY-touchStart.y;
+      touchStart=null;
+      if(Math.abs(dx)<20&&Math.abs(dy)<20)return;
+      let d;
+      if(Math.abs(dx)>Math.abs(dy))d={x:dx>0?1:-1,y:0};else d={x:0,y:dy>0?1:-1};
+      if(!(d.x===-dir.x&&d.y===-dir.y))nextDir=d;
+    },{passive:true});
+
+    function bindBtn(id,d){
+      const el=document.getElementById(id);
+      el.addEventListener('touchstart',e=>{e.preventDefault();if(!(d.x===-dir.x&&d.y===-dir.y))nextDir=d;},{passive:false});
+      el.addEventListener('mousedown',()=>{if(!(d.x===-dir.x&&d.y===-dir.y))nextDir=d;});
+    }
+    bindBtn('btn-up',{x:0,y:-1});bindBtn('btn-down',{x:0,y:1});
+    bindBtn('btn-left',{x:-1,y:0});bindBtn('btn-right',{x:1,y:0});
+
+    function tick(){
+      dir=nextDir;
+      const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+      if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS||snake.some(s=>s.x===head.x&&s.y===head.y)){
+        state='dead';
+        if(score>best){best=score;localStorage.setItem('snakeBest',best);document.getElementById('hud-best').textContent=best;}
+        document.getElementById('end-subtitle').textContent='得分: '+score;
+        endModal.classList.remove('hidden');return;
+      }
+      snake.unshift(head);
+      if(head.x===food.x&&head.y===food.y){
+        score++;speed=Math.min(1+Math.floor(score/5),12);
+        placeFood();
+      }else snake.pop();
+      updateHud();
+    }
+
+    function update(){
+      if(state!=='playing')return;
+      tickTimer++;
+      if(tickTimer>=Math.max(3,12-speed)){tick();tickTimer=0;}
+    }
+
+    function render(){
+      ctx.fillStyle='#0a0a1a';ctx.fillRect(0,0,W,H);
+      // grid
+      ctx.strokeStyle='rgba(255,255,255,0.03)';ctx.lineWidth=0.5;
+      for(let x=0;x<W;x+=CELL){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+      for(let y=0;y<H;y+=CELL){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      // food
+      ctx.fillStyle='#ff4d6a';ctx.beginPath();ctx.arc(food.x*CELL+CELL/2,food.y*CELL+CELL/2,CELL/2-2,0,Math.PI*2);ctx.fill();
+      // snake
+      snake.forEach((s,i)=>{
+        const t=1-i/snake.length;
+        ctx.fillStyle=i===0?'#6bcb77':`rgba(107,203,119,${0.4+t*0.6})`;
+        ctx.fillRect(s.x*CELL+1,s.y*CELL+1,CELL-2,CELL-2);
+      });
+    }
+
+    function loop(){update();render();requestAnimationFrame(loop);}
+    loop();
+  })();
+
+  /* === 8-bit Music === */
+  (function(){
+    let ctx,musicOn=true,playing=false,intervalId=null;
+    const NOTES={C4:262,D4:294,E4:330,F4:349,G4:392,A4:440,B4:494,C5:523};
+    // Light bouncy snake melody
+    const melody=[
+      [C4,.15],[E4,.15],[G4,.15],[C5,.15],[G4,.15],[E4,.15],
+      [D4,.15],[F4,.15],[A4,.15],[D5,.15],[A4,.15],[F4,.15],
+      [E4,.15],[G4,.15],[B4,.15],[E5,.15],[B4,.15],[G4,.15],
+      [F4,.15],[A4,.15],[C5,.15],[F5,.15],[C5,.15],[A4,.15]
+    ];
+    let pos=0;
+    function playNote(freq,dur){
+      if(!ctx)return;
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type='square';o.frequency.value=freq;
+      g.gain.setValueAtTime(0.1,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+dur*0.8);
+      o.connect(g);g.connect(ctx.destination);
+      o.start();o.stop(ctx.currentTime+dur);
+    }
+    function step(){
+      if(!musicOn||!playing)return;
+      const[n,d]=melody[pos%melody.length];
+      playNote(n,d*0.9);pos++;
+    }
+    function startMusic(){
+      if(!ctx)ctx=new(window.AudioContext||window.webkitAudioContext)();
+      if(ctx.state==='suspended')ctx.resume();
+      if(!playing){playing=true;pos=0;intervalId=setInterval(step,180);}
+    }
+    ['click','keydown','touchstart'].forEach(evt=>document.addEventListener(evt,startMusic,{once:true}));
+  })();
+  </script>
+</body>
+</html>

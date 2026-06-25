@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>五子棋 - AI 游戏盒子</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Mobile chat keyboard handling */
+    .chat-box.expanded {
+      height: 50dvh; /* use dynamic viewport height */
+    }
+    .chat-box.expanded .chat-messages {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
+      overflow-y: auto;
+    }
+    .chat-box.expanded .chat-input-row {
+      flex: 0 0 auto;
+      position: sticky;
+      bottom: 0;
+      background: rgba(20,20,35,0.98);
+      padding: 8px 0;
+    }
+    .chat-box.expanded .sticker-row {
+      flex: 0 0 auto;
+    }
+    body.keyboard-open .chat-box.expanded {
+      bottom: var(--keyboard-height, 0px);
+      height: calc(100dvh - var(--keyboard-height, 0px) - 12px);
+      max-height: calc(100dvh - var(--keyboard-height, 0px) - 12px);
+      border-radius: 16px 16px 0 0;
+    }
+    body.keyboard-open .chat-box.expanded .chat-messages {
+      max-height: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="game-header">
+      <a href="/" class="back-link">← 返回</a>
+      <h1>⚫⚪ 五子棋</h1>
+      <div class="settings-row">
+        <label class="sound-toggle"><input type="checkbox" id="music-check" checked> 🎵 音乐</label>
+        <label class="sound-toggle"><input type="checkbox" id="sfx-check" checked> 🔊 音效</label>
+      </div>
+    </div>
+
+    <div id="lobby" class="screen active">
+      <div class="card">
+        <div class="form-group">
+          <label>你的名字</label>
+          <input type="text" id="player-name" placeholder="Player" maxlength="16">
+        </div>
+        <div class="mode-list">
+          <button class="btn btn-primary" onclick="startMode('ai')">🤖 单机挑战 AI</button>
+          <button class="btn btn-secondary" onclick="startMode('local')">👥 本地双人对弈</button>
+          <button class="btn btn-warning" onclick="startMode('online')">🌐 在线开黑</button>
+        </div>
+      </div>
+
+      <div id="online-panel" class="card" style="margin-top:14px;">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="sound-toggle" title="公开房间会显示在首页房间列表，私有房间只能通过房间号加入"><input type="checkbox" id="room-public-check" checked> 公开房间（可被搜索）</label>
+        <div id="room-privacy-hint" class="privacy-hint"></div>
+        </div>
+        <div class="mode-list">
+          <button class="btn btn-primary" onclick="createRoom()">➕ 创建房间</button>
+          <button class="btn btn-secondary" onclick="showJoin()">🔗 加入房间</button>
+          <button class="btn btn-warning" onclick="quickMatch()">⚡ 快速匹配</button>
+        </div>
+        <div id="join-form" class="hidden" style="margin-top:12px;">
+          <div class="form-group">
+            <label>房间号</label>
+            <input type="text" id="room-id" placeholder="XXXXXX" maxlength="6" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;">
+          </div>
+          <button class="btn btn-primary" onclick="joinRoom()">进入房间</button>
+        </div>
+        <div id="error-msg" class="status-bar hidden" style="background:rgba(255,77,77,.15);color:#ff6b6b;"></div>
+      </div>
+    </div>
+
+    <div id="game" class="screen">
+      <div class="status-bar">
+        <div class="room-info-bar">
+          <span>房间:</span>
+          <span id="room-display" class="room-id">-</span>
+          <button class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:.8rem;" id="copy-btn" onclick="copyLink()">📋 复制链接</button>
+        </div>
+        <div class="player-badges">
+          <div id="badge-1" class="badge active"><span class="dot black"></span><span id="name-1">黑棋</span></div>
+          <div class="badge"><span>VS</span></div>
+          <div id="badge-2" class="badge"><span class="dot white"></span><span id="name-2">白棋</span></div>
+        </div>
+        <div id="turn-text">黑棋回合</div>
+        <div class="gomoku-mode" style="display:flex;gap:8px;justify-content:center;margin-top:6px;">
+          <button class="btn btn-ghost" id="mode-click" style="width:auto;padding:6px 10px;font-size:.75rem;" onclick="setInputMode('click')">点击落子</button>
+          <button class="btn btn-ghost" id="mode-drag" style="width:auto;padding:6px 10px;font-size:.75rem;" onclick="setInputMode('drag')">拖动预览</button>
+        </div>
+        <div id="gomoku-hint" class="gomoku-hint" style="font-size:.8rem;color:#aaa;margin-top:4px;">拖动预览模式：按住棋盘拖动，松手生成预览，点击预览落子</div>
+      </div>
+
+      <div class="board-wrap" id="board-wrap">
+        <div id="gomoku-board"></div>
+      </div>
+
+      <button id="place-btn" class="btn btn-primary hidden" onclick="confirmPlace()">✅ 落子</button>
+
+      <div class="controls">
+        <button class="btn btn-warning" id="reset-btn" onclick="resetGame()">🔄 重新开始</button>
+        <button class="btn btn-danger" onclick="leaveGame()">🚪 离开</button>
+      </div>
+
+      <!-- Chat -->
+      <div class="chat-box" id="chat-box">
+        <div class="chat-header">
+          <span>💬 聊天</span>
+          <button class="chat-toggle" id="chat-toggle" onclick="toggleChat()">展开</button>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chat-input" placeholder="说点什么..." maxlength="60" inputmode="text">
+          <button class="btn btn-ghost" style="width:auto;padding:8px 12px;" onclick="sendChat()">发送</button>
+        </div>
+        <div class="sticker-row">
+          <button onclick="sendSticker('👍')">👍</button>
+          <button onclick="sendSticker('😂')">😂</button>
+          <button onclick="sendSticker('😭')">😭</button>
+          <button onclick="sendSticker('🔥')">🔥</button>
+          <button onclick="sendSticker('💀')">💀</button>
+          <button onclick="sendSticker('🎉')">🎉</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="win-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="win-title">胜利!</h2>
+      <p id="win-subtitle">恭喜!</p>
+      <button class="btn btn-primary" onclick="rematchGame()">再来一局</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/sounds.js"></script>
+  <script src="/auth.js"></script>
+  <script src="/games/gomoku.js"></script>
+</body>
+</html>
