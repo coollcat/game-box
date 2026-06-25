@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.*
+ag_key.txt
+*.bak
+*.log
+data/users.json
+server.js.bak*
