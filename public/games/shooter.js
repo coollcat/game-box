@@ -254,7 +254,7 @@ function isBossWave() { return wave % 5 === 0; }
 
 function spawnWave() {
   if (isBossWave()) { spawnBoss(); return; }
-  const count = 4 + Math.floor(Math.random() * 3) + Math.floor((wave - 1) / 3);
+  const count = 7 + Math.floor(Math.random() * 5) + Math.floor((wave - 1) / 2);
   const pool = ['snake', 'wave', 'dash', 'side'];
   if (wave >= 3) { pool.push('tank', 'zigzag'); }
   if (wave >= 5) pool.push('seeker');
@@ -272,44 +272,44 @@ function makeEnemy(type, waveNum, opts = {}) {
     case 'snake':
       base.hp = Math.max(1, Math.floor(1.2 * hpScale));
       base.x = W / 2 + (Math.random() - 0.5) * W * 0.6; base.y = -30;
-      base.vx = (Math.random() < 0.5 ? 1 : -1) * (1.2 + Math.random() * 0.8); base.vy = 1.2 + waveNum * 0.08;
+      base.vx = (Math.random() < 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.6); base.vy = 0.8 + waveNum * 0.06;
       base.amp = 40 + Math.random() * 30; base.freq = 0.04 + Math.random() * 0.02; break;
     case 'wave':
       base.hp = Math.max(1, Math.floor(1.0 * hpScale));
       base.x = W / 2 + (Math.random() - 0.5) * W * 0.7; base.y = -30;
-      base.vx = 0; base.vy = 1 + waveNum * 0.07; base.amp = 50 + Math.random() * 40; base.freq = 0.05 + Math.random() * 0.03; base.cx = base.x; break;
+      base.vx = 0; base.vy = 0.7 + waveNum * 0.05; base.amp = 50 + Math.random() * 40; base.freq = 0.05 + Math.random() * 0.03; base.cx = base.x; break;
     case 'dash':
       base.hp = Math.max(1, Math.floor(0.8 * hpScale) + 1);
       base.x = 20 + Math.random() * (W - 40); base.y = -40;
-      base.vx = (Math.random() - 0.5); base.vy = 2.8 + waveNum * 0.15; base.color = '#ff4d6a'; break;
+      base.vx = (Math.random() - 0.5); base.vy = 2.0 + waveNum * 0.1; base.color = '#ff4d6a'; break;
     case 'side':
       base.hp = Math.max(1, Math.floor(0.9 * hpScale));
       base.y = 40 + Math.random() * (H * 0.35); base.x = Math.random() < 0.5 ? -30 : W + 30;
-      base.vx = (base.x < 0 ? 1 : -1) * (1.5 + waveNum * 0.1); base.vy = 0.6 + Math.random() * 0.6; base.color = '#6bcb77'; break;
+      base.vx = (base.x < 0 ? 1 : -1) * (1.0 + waveNum * 0.08); base.vy = 0.4 + Math.random() * 0.4; base.color = '#6bcb77'; break;
     case 'tank':
       base.w = 32; base.h = 28; base.hp = Math.max(2, Math.floor(2.0 * hpScale) + 2);
       base.x = 30 + Math.random() * (W - 60); base.y = -50;
-      base.vx = 0; base.vy = 0.8 + waveNum * 0.04; base.color = '#b0b0b0'; break;
+      base.vx = 0; base.vy = 0.6 + waveNum * 0.03; base.color = '#b0b0b0'; break;
     case 'zigzag':
       base.hp = Math.max(1, Math.floor(0.9 * hpScale));
       base.x = 30 + Math.random() * (W - 60); base.y = -35;
-      base.vx = (Math.random() < 0.5 ? 1 : -1) * (2 + Math.random() * 0.8); base.vy = 1.6 + waveNum * 0.1;
+      base.vx = (Math.random() < 0.5 ? 1 : -1) * (1.4 + Math.random() * 0.6); base.vy = 1.1 + waveNum * 0.08;
       base.color = '#a55eea'; break;
     case 'seeker':
       base.hp = Math.max(1, Math.floor(1.0 * hpScale));
       base.x = 20 + Math.random() * (W - 40); base.y = -35;
-      base.vx = 0; base.vy = 1 + waveNum * 0.07; base.color = '#ff9f43'; break;
+      base.vx = 0; base.vy = 0.7 + waveNum * 0.05; base.color = '#ff9f43'; break;
     case 'bomber':
       base.hp = Math.max(1, Math.floor(1.1 * hpScale));
       base.x = 30 + Math.random() * (W - 60); base.y = -40;
-      base.vx = (Math.random() - 0.5) * 0.6; base.vy = 1.3 + waveNum * 0.08; base.color = '#2ed573'; break;
+      base.vx = (Math.random() - 0.5) * 0.6; base.vy = 0.9 + waveNum * 0.06; base.color = '#2ed573'; break;
     case 'splitter':
       base.w = 28; base.h = 24; base.hp = Math.max(1, Math.floor(1.3 * hpScale));
       base.x = 30 + Math.random() * (W - 60); base.y = -45;
-      base.vx = (Math.random() - 0.5); base.vy = 1.5 + waveNum * 0.09; base.color = '#ff6b9d'; base.splits = true; break;
+      base.vx = (Math.random() - 0.5); base.vy = 1.0 + waveNum * 0.06; base.color = '#ff6b9d'; base.splits = true; break;
     case 'splitterChild':
       base.w = 16; base.h = 14; base.hp = Math.max(1, Math.floor(0.5 * hpScale));
-      base.vy = 3 + waveNum * 0.12; base.color = '#ff6b9d'; base.splits = false; break;
+      base.vy = 2.0 + waveNum * 0.08; base.color = '#ff6b9d'; base.splits = false; break;
     default:
       base.x = W / 2; base.y = -30; base.vx = 0; base.vy = 1;
   }
@@ -328,7 +328,7 @@ function spawnBoss() {
   bossActive = true;
   const tier = Math.floor(wave / 5);
   const template = BOSS_TYPES[tier % BOSS_TYPES.length];
-  const hp = Math.floor((100 + tier * 55) * template.hpMul);
+  const hp = Math.floor((60 + tier * 35) * template.hpMul);
   enemies.push({
     x: W / 2, y: -90, w: template.w, h: template.h, hp, maxHp: hp, type: template.type, timer: 0, phase: 0,
     color: template.color, vx: template.speed + tier * 0.12, vy: 0.9,
@@ -505,7 +505,7 @@ function moveEnemy(e) {
 function killBoss(e, i) {
   score += 100;
   spawnParticles(e.x, e.y, e.color, 50);
-  dropCoins(e.x, e.y, 20 + Math.floor(wave / 5) * 10);
+  dropCoins(e.x, e.y, 50 + Math.floor(wave / 5) * 25);
   spawnPowerup(e.x, e.y);
   enemies.splice(i, 1);
   bossActive = false;
@@ -544,7 +544,7 @@ function enemyFireLogic() {
   for (const e of enemies) {
     if (e.type.startsWith('boss')) { bossAttack(e); continue; }
     if (e.type === 'bomber' && e.entered !== false && e.y > 20 && e.y < H - 100 && e.timer % 80 === 0) {
-      enemyBullets.push({ x: e.x, y: e.y + e.h / 2, vy: 3.2, vx: 0, r: 6 });
+      enemyBullets.push({ x: e.x, y: e.y + e.h / 2, vy: 2.2, vx: 0, r: 6 });
     }
     if (e.type === 'tank') continue;
     const chance = 0.004 + wave * 0.0006;
@@ -552,7 +552,7 @@ function enemyFireLogic() {
       const target = nearestPlayer(e.x, e.y);
       let vx = 0;
       if (target) { const angle = Math.atan2(target.y - e.y, target.x - e.x); vx = Math.cos(angle) * (1 + wave * 0.05); }
-      enemyBullets.push({ x: e.x, y: e.y + e.h / 2, vy: 2.4 + wave * 0.12, vx, r: 5 });
+      enemyBullets.push({ x: e.x, y: e.y + e.h / 2, vy: 1.8 + wave * 0.08, vx, r: 5 });
     }
   }
 }
@@ -589,7 +589,7 @@ function updateCollisions() {
           const isBoss = e.type.startsWith('boss');
           score += isBoss ? 100 : 10;
           spawnParticles(e.x, e.y, e.color, isBoss ? 50 : 12);
-          if (isBoss) { bossActive = false; dropCoins(e.x, e.y, 20 + Math.floor(wave / 5) * 10); spawnPowerup(e.x, e.y); }
+          if (isBoss) { bossActive = false; dropCoins(e.x, e.y, 50 + Math.floor(wave / 5) * 25); spawnPowerup(e.x, e.y); }
           else {
             if (Math.random() < 0.35) dropCoins(e.x, e.y, 1 + Math.floor(Math.random() * 2));
             if (e.splits) spawnSplitterChildren(e.x, e.y);

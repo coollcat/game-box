@@ -679,15 +679,34 @@
         function makePassengers(specs) {
             const colorCapacity = {};
             specs.forEach(v => { colorCapacity[v.color] = (colorCapacity[v.color] || 0) + (v.size === 2 ? 4 : 7); });
+            // 用轮询方式交错排列，保证颜色散开而不是扎堆
+            const queues = {};
+            for (const [color, count] of Object.entries(colorCapacity)) {
+                queues[color] = [];
+                for (let i = 0; i < count; i++) queues[color].push(color);
+            }
+            // 确保第一个是usedColors[0]（第一个活跃色），方便轨道填充
+            const firstColor = usedColors[0];
             const allPassengers = [];
-            usedColors.forEach(color => { if ((colorCapacity[color] || 0) > 0) allPassengers.push(color); });
-            Object.entries(colorCapacity).forEach(([color, count]) => {
-                let have = allPassengers.filter(c => c === color).length;
-                for (let i = have; i < count; i++) allPassengers.push(color);
-            });
-            for (let i = allPassengers.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [allPassengers[i], allPassengers[j]] = [allPassengers[j], allPassengers[i]];
+            if (queues[firstColor] && queues[firstColor].length > 0) {
+                allPassengers.push(queues[firstColor].shift());
+            }
+            const colorList = usedColors.filter(c => c !== firstColor && queues[c] && queues[c].length > 0);
+            while (true) {
+                let anyLeft = false;
+                // 轮询：从非首位色中各取一个
+                for (const color of colorList) {
+                    if (queues[color] && queues[color].length > 0) {
+                        allPassengers.push(queues[color].shift());
+                        anyLeft = true;
+                    }
+                }
+                // 再取一个首位色
+                if (queues[firstColor] && queues[firstColor].length > 0) {
+                    allPassengers.push(queues[firstColor].shift());
+                    anyLeft = true;
+                }
+                if (!anyLeft) break;
             }
             return allPassengers;
         }

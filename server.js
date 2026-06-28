@@ -1391,8 +1391,8 @@ function updateSnake(room) {
       killSnake(room, sym); return;
     }
 
-    // self / other collision
-    if (snake.some(seg => seg.x === head.x && seg.y === head.y)) { killSnake(room, sym); return; }
+    // self / other collision (exclude tail - it moves away this tick)
+    if (snake.slice(0, -1).some(seg => seg.x === head.x && seg.y === head.y)) { killSnake(room, sym); return; }
     const other = sym === 1 ? 2 : 1;
     const otherSnake = s.snakes[other];
     if (otherSnake && otherSnake.some(seg => seg.x === head.x && seg.y === head.y)) { killSnake(room, sym); return; }

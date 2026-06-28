@@ -158,16 +158,20 @@ function serveBall(dir) {
   state.ball = { x: 0.5, y: 0.5, vx: speed * Math.sin(angle), vy: speed * (dir || 1) };
   state.status = 'playing';
 }
-function localLoop() {
+let lastTime = 0;
+function localLoop(timestamp) {
   if (mode !== 'local') return;
-  updateLocalPhysics();
+  if (!lastTime) lastTime = timestamp;
+  const dt = Math.min((timestamp - lastTime) / 16.667, 3);
+  lastTime = timestamp;
+  updateLocalPhysics(dt);
   draw();
   requestAnimationFrame(localLoop);
 }
-function updateLocalPhysics() {
+function updateLocalPhysics(dt) {
   if (state.status !== 'playing') return;
   let { x, y, vx, vy } = state.ball;
-  x += vx; y += vy;
+  x += vx * dt; y += vy * dt;
   if (x - BALL_R < 0) { x = BALL_R; vx = Math.abs(vx); play('hit'); }
   if (x + BALL_R > 1) { x = 1 - BALL_R; vx = -Math.abs(vx); play('hit'); }
   const p1 = state.paddles[0].x, p2 = state.paddles[1].x;

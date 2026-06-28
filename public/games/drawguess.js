@@ -178,7 +178,7 @@ function applyState(state) {
 
 function startRound() {
   if (mode === 'online' && (roomState.status === 'finished' || roomState.status === 'ended')) {
-    socket.emit('rematch');
+    socket.emit('drawguess:next');
     return;
   }
   if (mode === 'single' || isHost) socket.emit('drawguess:start');
